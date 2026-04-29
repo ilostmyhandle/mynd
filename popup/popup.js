@@ -4,6 +4,7 @@ import StorageManager from '../memory/storage.js';
 const authScreen = document.getElementById('auth-screen');
 const dashboardScreen = document.getElementById('dashboard-screen');
 const authMessage = document.getElementById('auth-message');
+const redirectHint = document.getElementById('redirect-hint');
 const counterUsed = document.getElementById('counter-used');
 const counterBar = document.getElementById('counter-bar');
 const limitWarning = document.getElementById('limit-warning');
@@ -43,6 +44,9 @@ async function init() {
 function showAuth() {
   authScreen.classList.remove('hidden');
   dashboardScreen.classList.add('hidden');
+
+  const redirectUrl = getOAuthRedirectUrl();
+  redirectHint.textContent = `OAuth redirect URL: ${redirectUrl}`;
 }
 
 async function showDashboard(user) {
@@ -68,7 +72,7 @@ googleButton.addEventListener('click', async () => {
   showMessage('Opening Google sign in...');
 
   try {
-    const redirectTo = chrome.identity.getRedirectURL();
+    const redirectTo = getOAuthRedirectUrl();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -203,6 +207,10 @@ function launchWebAuthFlow(url) {
       }
     );
   });
+}
+
+function getOAuthRedirectUrl() {
+  return chrome.identity.getRedirectURL('auth');
 }
 
 async function completeOAuth(responseUrl) {

@@ -105,6 +105,14 @@ input:focus {
   min-height: 16px;
 }
 
+.redirect-hint {
+  font-size: 10px;
+  line-height: 1.4;
+  color: #555;
+  word-break: break-all;
+  user-select: text;
+}
+
 .counter-wrap {
   background: #1a1a1a;
   border-radius: 10px;
