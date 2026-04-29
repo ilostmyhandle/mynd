@@ -7,17 +7,36 @@ const authMessage = document.getElementById('auth-message');
 const counterUsed = document.getElementById('counter-used');
 const counterBar = document.getElementById('counter-bar');
 const limitWarning = document.getElementById('limit-warning');
+const googleButton = document.getElementById('google-btn');
+const signupButton = document.getElementById('signup-btn');
+const loginButton = document.getElementById('login-btn');
+const logoutButton = document.getElementById('logout-btn');
+
+window.addEventListener('error', (event) => {
+  showMessage(`Startup error: ${event.message}`);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  showMessage(`Auth error: ${getErrorMessage(event.reason)}`);
+});
 
 // ---------------------------------------------------------------------------
 // SHOW the right screen depending on login state
 // ---------------------------------------------------------------------------
 async function init() {
-  const { data: { session } } = await supabase.auth.getSession();
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
 
-  if (session) {
-    showDashboard(session.user);
-  } else {
+    if (error) throw error;
+
+    if (session) {
+      showDashboard(session.user);
+    } else {
+      showAuth();
+    }
+  } catch (error) {
     showAuth();
+    showMessage(`Could not start auth: ${getErrorMessage(error)}`);
   }
 }
 
@@ -44,20 +63,36 @@ async function showDashboard(user) {
 // ---------------------------------------------------------------------------
 // GOOGLE LOGIN
 // ---------------------------------------------------------------------------
-document.getElementById('google-btn').addEventListener('click', async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: chrome.identity.getRedirectURL()
-    }
-  });
-  if (error) showMessage(error.message);
+googleButton.addEventListener('click', async () => {
+  setButtonsDisabled(true);
+  showMessage('Opening Google sign in...');
+
+  try {
+    const redirectTo = chrome.identity.getRedirectURL();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo,
+        skipBrowserRedirect: true
+      }
+    });
+
+    if (error) throw error;
+    if (!data?.url) throw new Error('Supabase did not return a Google sign-in URL.');
+
+    const responseUrl = await launchWebAuthFlow(data.url);
+    await completeOAuth(responseUrl);
+  } catch (error) {
+    showMessage(getErrorMessage(error));
+  } finally {
+    setButtonsDisabled(false);
+  }
 });
 
 // ---------------------------------------------------------------------------
 // EMAIL SIGNUP
 // ---------------------------------------------------------------------------
-document.getElementById('signup-btn').addEventListener('click', async () => {
+signupButton.addEventListener('click', async () => {
   const email = document.getElementById('email-input').value;
   const password = document.getElementById('password-input').value;
 
@@ -66,19 +101,28 @@ document.getElementById('signup-btn').addEventListener('click', async () => {
     return;
   }
 
-  const { error } = await supabase.auth.signUp({ email, password });
+  setButtonsDisabled(true);
+  showMessage('Creating account...');
 
-  if (error) {
-    showMessage(error.message);
-  } else {
-    showMessage('Check your email to confirm your account.');
+  try {
+    const { error } = await supabase.auth.signUp({ email, password });
+
+    if (error) {
+      showMessage(error.message);
+    } else {
+      showMessage('Check your email to confirm your account.');
+    }
+  } catch (error) {
+    showMessage(getErrorMessage(error));
+  } finally {
+    setButtonsDisabled(false);
   }
 });
 
 // ---------------------------------------------------------------------------
 // EMAIL LOGIN
 // ---------------------------------------------------------------------------
-document.getElementById('login-btn').addEventListener('click', async () => {
+loginButton.addEventListener('click', async () => {
   const email = document.getElementById('email-input').value;
   const password = document.getElementById('password-input').value;
 
@@ -87,24 +131,43 @@ document.getElementById('login-btn').addEventListener('click', async () => {
     return;
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+  setButtonsDisabled(true);
+  showMessage('Logging in...');
 
-  if (error) {
-    showMessage(error.message);
-  } else {
-    showDashboard(data.user);
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      showMessage(error.message);
+    } else {
+      showMessage('');
+      showDashboard(data.user);
+    }
+  } catch (error) {
+    showMessage(getErrorMessage(error));
+  } finally {
+    setButtonsDisabled(false);
   }
 });
 
 // ---------------------------------------------------------------------------
 // LOGOUT
 // ---------------------------------------------------------------------------
-document.getElementById('logout-btn').addEventListener('click', async () => {
-  await supabase.auth.signOut();
-  showAuth();
+logoutButton.addEventListener('click', async () => {
+  setButtonsDisabled(true);
+
+  try {
+    await supabase.auth.signOut();
+    showAuth();
+    showMessage('');
+  } catch (error) {
+    showMessage(getErrorMessage(error));
+  } finally {
+    setButtonsDisabled(false);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -112,6 +175,71 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
 // ---------------------------------------------------------------------------
 function showMessage(msg) {
   authMessage.textContent = msg;
+}
+
+function setButtonsDisabled(disabled) {
+  googleButton.disabled = disabled;
+  signupButton.disabled = disabled;
+  loginButton.disabled = disabled;
+  logoutButton.disabled = disabled;
+}
+
+function launchWebAuthFlow(url) {
+  return new Promise((resolve, reject) => {
+    chrome.identity.launchWebAuthFlow(
+      { url, interactive: true },
+      (responseUrl) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+
+        if (!responseUrl) {
+          reject(new Error('Google sign-in was cancelled.'));
+          return;
+        }
+
+        resolve(responseUrl);
+      }
+    );
+  });
+}
+
+async function completeOAuth(responseUrl) {
+  const url = new URL(responseUrl);
+  const code = url.searchParams.get('code');
+
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) throw error;
+    showDashboard(data.user);
+    return;
+  }
+
+  const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
+  const accessToken = hashParams.get('access_token');
+  const refreshToken = hashParams.get('refresh_token');
+
+  if (accessToken && refreshToken) {
+    const { data, error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken
+    });
+
+    if (error) throw error;
+    showDashboard(data.user);
+    return;
+  }
+
+  throw new Error('Google sign-in did not return a usable session.');
+}
+
+function getErrorMessage(error) {
+  if (!error) return 'Something went wrong.';
+  if (typeof error === 'string') return error;
+  if (error.message) return error.message;
+  return JSON.stringify(error);
 }
 
 // ---------------------------------------------------------------------------
