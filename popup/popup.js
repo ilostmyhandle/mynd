@@ -8,6 +8,11 @@ const redirectHint = document.getElementById('redirect-hint');
 const counterUsed = document.getElementById('counter-used');
 const counterBar = document.getElementById('counter-bar');
 const limitWarning = document.getElementById('limit-warning');
+const memoryInput = document.getElementById('memory-input');
+const memoryTopicInput = document.getElementById('memory-topic-input');
+const saveMemoryButton = document.getElementById('save-memory-btn');
+const dashboardMessage = document.getElementById('dashboard-message');
+const memoryList = document.getElementById('memory-list');
 const googleButton = document.getElementById('google-btn');
 const signupButton = document.getElementById('signup-btn');
 const loginButton = document.getElementById('login-btn');
@@ -55,6 +60,10 @@ async function showDashboard(user) {
   authScreen.classList.add('hidden');
   dashboardScreen.classList.remove('hidden');
 
+  await refreshDashboard();
+}
+
+async function refreshDashboard() {
   // Pull stats from local storage to show the counter
   const stats = await StorageManager.getStats();
 
@@ -66,6 +75,8 @@ async function showDashboard(user) {
   } else {
     limitWarning.classList.add('hidden');
   }
+
+  await renderMemoryList();
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +173,49 @@ loginButton.addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// MANUAL MEMORY TEST
+// ---------------------------------------------------------------------------
+saveMemoryButton.addEventListener('click', async () => {
+  const fact = memoryInput.value.trim();
+  const topic = memoryTopicInput.value.trim() || 'general';
+
+  if (!fact) {
+    showDashboardMessage('Enter a memory first.');
+    return;
+  }
+
+  saveMemoryButton.disabled = true;
+  showDashboardMessage('Saving memory...');
+
+  try {
+    const result = await StorageManager.saveMemory(fact, 'manual', topic);
+
+    if (!result.success && result.reason === 'limit_reached') {
+      showDashboardMessage('Free memory limit reached.');
+      return;
+    }
+
+    memoryInput.value = '';
+    memoryTopicInput.value = '';
+    await refreshDashboard();
+
+    if (result.serverSync?.success) {
+      showDashboardMessage(`Saved. Server count: ${result.serverSync.count}`);
+    } else if (result.duplicate) {
+      showDashboardMessage('Memory already existed. Use count updated.');
+    } else if (result.serverSync?.message) {
+      showDashboardMessage(`Saved locally. Counter sync failed: ${result.serverSync.message}`);
+    } else {
+      showDashboardMessage('Saved locally.');
+    }
+  } catch (error) {
+    showDashboardMessage(getErrorMessage(error));
+  } finally {
+    saveMemoryButton.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // LOGOUT
 // ---------------------------------------------------------------------------
 logoutButton.addEventListener('click', async () => {
@@ -183,6 +237,10 @@ logoutButton.addEventListener('click', async () => {
 // ---------------------------------------------------------------------------
 function showMessage(msg) {
   authMessage.textContent = msg;
+}
+
+function showDashboardMessage(msg) {
+  dashboardMessage.textContent = msg;
 }
 
 function setButtonsDisabled(disabled) {
@@ -250,6 +308,32 @@ async function completePendingOAuth() {
 
 async function clearPendingOAuth() {
   await chrome.storage.local.remove([OAUTH_RESPONSE_KEY]);
+}
+
+async function renderMemoryList() {
+  const memories = await StorageManager.getMemories();
+  const latest = memories.slice(0, 5);
+
+  if (!latest.length) {
+    memoryList.innerHTML = '<div class="empty-state">No memories stored yet.</div>';
+    return;
+  }
+
+  memoryList.innerHTML = latest.map((memory) => `
+    <div class="memory-item">
+      <div class="memory-fact">${escapeHtml(memory.fact)}</div>
+      <div class="memory-meta">${escapeHtml(memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 chrome.runtime.onMessage.addListener((message) => {

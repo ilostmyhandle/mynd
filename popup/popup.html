@@ -50,6 +50,19 @@
       <button id="upgrade-btn" class="btn btn-upgrade">Upgrade $5/mo</button>
     </div>
 
+    <div class="memory-panel">
+      <div class="panel-title">Memory test</div>
+      <textarea id="memory-input" rows="3" placeholder="Save a fact Cortex should remember"></textarea>
+      <input id="memory-topic-input" type="text" placeholder="Topic, e.g. project" />
+      <button id="save-memory-btn" class="btn btn-primary">Save Memory</button>
+      <p id="dashboard-message" class="message"></p>
+    </div>
+
+    <div class="memory-panel">
+      <div class="panel-title">Latest memories</div>
+      <div id="memory-list" class="memory-list"></div>
+    </div>
+
     <button id="logout-btn" class="btn btn-secondary">Log Out</button>
   </div>
 

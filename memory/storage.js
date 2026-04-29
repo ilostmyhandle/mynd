@@ -4,6 +4,8 @@
  * This is the only file that touches stored memories directly.
  */
 
+import { supabase } from '../utils/supabase.js';
+
 const MEMORY_LIMIT = 200;
 
 const StorageManager = {
@@ -22,8 +24,9 @@ const StorageManager = {
     const existingIndex = memories.findIndex(
       (m) => m.fact.toLowerCase() === fact.toLowerCase()
     );
+    const isDuplicate = existingIndex !== -1;
 
-    if (existingIndex !== -1) {
+    if (isDuplicate) {
       memories[existingIndex].uses += 1;
       memories[existingIndex].timestamp = new Date().toISOString();
     } else {
@@ -44,11 +47,49 @@ const StorageManager = {
     }
 
     return new Promise((resolve) => {
-      chrome.storage.local.set({ memories, total: memories.length }, () => {
+      chrome.storage.local.set({ memories, total: memories.length }, async () => {
         console.log("Cortex: Memory saved.");
-        resolve({ success: true, total: memories.length });
+
+        const sync = isDuplicate ?
+          { skipped: true, reason: "duplicate" } :
+          await StorageManager.syncServerMemoryCount();
+
+        resolve({
+          success: true,
+          total: memories.length,
+          duplicate: isDuplicate,
+          serverSync: sync
+        });
       });
     });
+  },
+
+  syncServerMemoryCount: async () => {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) throw sessionError;
+
+      if (!session?.user?.id) {
+        return { skipped: true, reason: "not_authenticated" };
+      }
+
+      const { data, error } = await supabase.rpc('increment_memory_count', {
+        user_id: session.user.id
+      });
+
+      if (error) throw error;
+
+      return { success: true, count: data };
+    } catch (error) {
+      console.warn("Cortex: Server memory counter sync failed.", error);
+
+      return {
+        success: false,
+        reason: "sync_failed",
+        message: error?.message || String(error)
+      };
+    }
   },
 
   findRelevantMemories: async (contextText) => {
