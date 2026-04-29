@@ -12,6 +12,7 @@ const googleButton = document.getElementById('google-btn');
 const signupButton = document.getElementById('signup-btn');
 const loginButton = document.getElementById('login-btn');
 const logoutButton = document.getElementById('logout-btn');
+const OAUTH_RESPONSE_KEY = 'cortex.pendingOAuthResponseUrl';
 
 window.addEventListener('error', (event) => {
   showMessage(`Startup error: ${event.message}`);
@@ -34,6 +35,7 @@ async function init() {
       showDashboard(session.user);
     } else {
       showAuth();
+      await completePendingOAuth();
     }
   } catch (error) {
     showAuth();
@@ -84,8 +86,8 @@ googleButton.addEventListener('click', async () => {
     if (error) throw error;
     if (!data?.url) throw new Error('Supabase did not return a Google sign-in URL.');
 
-    const responseUrl = await launchWebAuthFlow(data.url);
-    await completeOAuth(responseUrl);
+    await chrome.tabs.create({ url: data.url, active: true });
+    showMessage('Finish Google sign-in in the new tab, then reopen Cortex.');
   } catch (error) {
     showMessage(getErrorMessage(error));
   } finally {
@@ -188,39 +190,28 @@ function setButtonsDisabled(disabled) {
   logoutButton.disabled = disabled;
 }
 
-function launchWebAuthFlow(url) {
-  return new Promise((resolve, reject) => {
-    chrome.identity.launchWebAuthFlow(
-      { url, interactive: true },
-      (responseUrl) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-
-        if (!responseUrl) {
-          reject(new Error('Google sign-in was cancelled.'));
-          return;
-        }
-
-        resolve(responseUrl);
-      }
-    );
-  });
-}
-
 function getOAuthRedirectUrl() {
   return chrome.identity.getRedirectURL('auth');
 }
 
 async function completeOAuth(responseUrl) {
   const url = new URL(responseUrl);
+
+  const authError = url.searchParams.get('error_description') ||
+    url.searchParams.get('error') ||
+    new URLSearchParams(url.hash.replace(/^#/, '')).get('error_description') ||
+    new URLSearchParams(url.hash.replace(/^#/, '')).get('error');
+
+  if (authError) throw new Error(authError);
+
   const code = url.searchParams.get('code');
 
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) throw error;
+    await clearPendingOAuth();
+    showMessage('');
     showDashboard(data.user);
     return;
   }
@@ -236,12 +227,36 @@ async function completeOAuth(responseUrl) {
     });
 
     if (error) throw error;
+    await clearPendingOAuth();
+    showMessage('');
     showDashboard(data.user);
     return;
   }
 
   throw new Error('Google sign-in did not return a usable session.');
 }
+
+async function completePendingOAuth() {
+  const result = await chrome.storage.local.get([OAUTH_RESPONSE_KEY]);
+  const responseUrl = result[OAUTH_RESPONSE_KEY];
+
+  if (!responseUrl) return;
+
+  showMessage('Completing Google sign-in...');
+  await completeOAuth(responseUrl);
+}
+
+async function clearPendingOAuth() {
+  await chrome.storage.local.remove([OAUTH_RESPONSE_KEY]);
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type !== 'cortex.oauthCallback') return;
+
+  completeOAuth(message.url).catch((error) => {
+    showMessage(getErrorMessage(error));
+  });
+});
 
 function getErrorMessage(error) {
   if (!error) return 'Something went wrong.';
