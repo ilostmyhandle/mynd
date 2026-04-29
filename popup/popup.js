@@ -63,6 +63,8 @@ async function showDashboard(user) {
 
   if (stats.limitReached) {
     limitWarning.classList.remove('hidden');
+  } else {
+    limitWarning.classList.add('hidden');
   }
 }
 
