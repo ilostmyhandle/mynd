@@ -48,7 +48,7 @@ function showAuth() {
   dashboardScreen.classList.add('hidden');
 
   const redirectUrl = getOAuthRedirectUrl();
-  redirectHint.textContent = `OAuth redirect URL: ${redirectUrl}`;
+  redirectHint.textContent = `OAuth redirect URL: ${redirectUrl}. Dev fallback accepted: http://localhost:3000`;
 }
 
 async function showDashboard(user) {
