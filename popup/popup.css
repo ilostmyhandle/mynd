@@ -1,0 +1,154 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 300px;
+  min-height: 380px;
+  background: #0a0a0a;
+  color: #f0f0f0;
+  font-family: 'Segoe UI', sans-serif;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hidden {
+  display: none;
+}
+
+.logo {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.tagline {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+input {
+  width: 100%;
+  padding: 10px 12px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  color: #f0f0f0;
+  font-size: 13px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #555;
+}
+
+.btn {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn:hover {
+  opacity: 0.85;
+}
+
+.btn-google {
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+.btn-primary {
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+.btn-secondary {
+  background: #1a1a1a;
+  color: #f0f0f0;
+  border: 1px solid #2a2a2a;
+}
+
+.btn-upgrade {
+  background: #f0f0f0;
+  color: #0a0a0a;
+  margin-top: 8px;
+}
+
+.divider {
+  text-align: center;
+  color: #555;
+  font-size: 12px;
+  position: relative;
+}
+
+.message {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+  min-height: 16px;
+}
+
+.counter-wrap {
+  background: #1a1a1a;
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.counter-label {
+  font-size: 12px;
+  color: #888;
+}
+
+.counter-track {
+  width: 100%;
+  height: 6px;
+  background: #2a2a2a;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.counter-bar {
+  height: 100%;
+  background: #ffffff;
+  border-radius: 999px;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+.counter-numbers {
+  font-size: 13px;
+  color: #f0f0f0;
+  font-weight: 600;
+}
+
+.warning {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+}

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cortex</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <!-- AUTH SCREEN: shown when user is not logged in -->
+  <div id="auth-screen" class="screen">
+    <div class="logo">Cortex</div>
+    <p class="tagline">Your memory across every AI.</p>
+
+    <button id="google-btn" class="btn btn-google">
+      Continue with Google
+    </button>
+
+    <div class="divider">or</div>
+
+    <input id="email-input" type="email" placeholder="Email address" />
+    <input id="password-input" type="password" placeholder="Password" />
+
+    <button id="signup-btn" class="btn btn-primary">Sign Up</button>
+    <button id="login-btn" class="btn btn-secondary">Log In</button>
+
+    <p id="auth-message" class="message"></p>
+  </div>
+
+  <!-- DASHBOARD: shown when user is logged in -->
+  <div id="dashboard-screen" class="screen hidden">
+    <div class="logo">Cortex</div>
+
+    <div class="counter-wrap">
+      <div class="counter-label">Memories stored</div>
+      <div class="counter-track">
+        <div id="counter-bar" class="counter-bar"></div>
+      </div>
+      <div class="counter-numbers">
+        <span id="counter-used">0</span>
+        <span> / 200</span>
+      </div>
+    </div>
+
+    <div id="limit-warning" class="warning hidden">
+      You have reached your free limit.
+      Upgrade to keep building your memory.
+      <button id="upgrade-btn" class="btn btn-upgrade">Upgrade $5/mo</button>
+    </div>
+
+    <button id="logout-btn" class="btn btn-secondary">Log Out</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
