@@ -13,7 +13,11 @@ module.exports = {
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: '[name].js'
+    filename: '[name].js',
+    globalObject: 'globalThis',
+    environment: {
+      globalThis: true
+    }
   },
   module: {
     rules: [
