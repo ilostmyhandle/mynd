@@ -3,6 +3,7 @@ const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   mode: 'development',
+  devtool: false,
   entry: {
     popup: './popup/popup.js',
     background: './background.js',
