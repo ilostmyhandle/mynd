@@ -59,6 +59,25 @@
     </div>
 
     <div class="memory-panel">
+      <div class="panel-title">AI settings</div>
+      <select id="provider-select">
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+      </select>
+      <input id="api-key-input" type="password" placeholder="API key stored locally" />
+      <input id="model-input" type="text" placeholder="Model" />
+      <button id="save-settings-btn" class="btn btn-secondary">Save Settings</button>
+      <p id="settings-message" class="message"></p>
+    </div>
+
+    <div class="memory-panel">
+      <div class="panel-title">Summarizer test</div>
+      <textarea id="conversation-input" rows="4" placeholder="Paste a short conversation to extract memories"></textarea>
+      <button id="extract-memory-btn" class="btn btn-primary">Extract Memories</button>
+      <p id="summarizer-message" class="message"></p>
+    </div>
+
+    <div class="memory-panel">
       <div class="panel-title">Latest memories</div>
       <div id="memory-list" class="memory-list"></div>
     </div>

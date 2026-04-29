@@ -1,5 +1,7 @@
 import { supabase } from '../utils/supabase.js';
 import StorageManager from '../memory/storage.js';
+import SettingsManager from '../memory/settings.js';
+import Summarizer from '../memory/summarizer.js';
 
 const authScreen = document.getElementById('auth-screen');
 const dashboardScreen = document.getElementById('dashboard-screen');
@@ -13,6 +15,14 @@ const memoryTopicInput = document.getElementById('memory-topic-input');
 const saveMemoryButton = document.getElementById('save-memory-btn');
 const dashboardMessage = document.getElementById('dashboard-message');
 const memoryList = document.getElementById('memory-list');
+const providerSelect = document.getElementById('provider-select');
+const apiKeyInput = document.getElementById('api-key-input');
+const modelInput = document.getElementById('model-input');
+const saveSettingsButton = document.getElementById('save-settings-btn');
+const settingsMessage = document.getElementById('settings-message');
+const conversationInput = document.getElementById('conversation-input');
+const extractMemoryButton = document.getElementById('extract-memory-btn');
+const summarizerMessage = document.getElementById('summarizer-message');
 const googleButton = document.getElementById('google-btn');
 const signupButton = document.getElementById('signup-btn');
 const loginButton = document.getElementById('login-btn');
@@ -76,6 +86,7 @@ async function refreshDashboard() {
     limitWarning.classList.add('hidden');
   }
 
+  await renderSettings();
   await renderMemoryList();
 }
 
@@ -216,6 +227,76 @@ saveMemoryButton.addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// AI SETTINGS
+// ---------------------------------------------------------------------------
+providerSelect.addEventListener('change', () => {
+  modelInput.value = SettingsManager.getDefaultModel(providerSelect.value);
+});
+
+saveSettingsButton.addEventListener('click', async () => {
+  saveSettingsButton.disabled = true;
+  showSettingsMessage('Saving settings...');
+
+  try {
+    const settings = await SettingsManager.saveSettings({
+      provider: providerSelect.value,
+      apiKey: apiKeyInput.value,
+      model: modelInput.value
+    });
+
+    apiKeyInput.value = settings.apiKey;
+    modelInput.value = settings.model;
+    showSettingsMessage('Settings saved locally.');
+  } catch (error) {
+    showSettingsMessage(getErrorMessage(error));
+  } finally {
+    saveSettingsButton.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// SUMMARIZER TEST
+// ---------------------------------------------------------------------------
+extractMemoryButton.addEventListener('click', async () => {
+  const conversationText = conversationInput.value.trim();
+
+  if (!conversationText) {
+    showSummarizerMessage('Paste conversation text first.');
+    return;
+  }
+
+  extractMemoryButton.disabled = true;
+  showSummarizerMessage('Extracting memories...');
+
+  try {
+    const memories = await Summarizer.extractMemories(conversationText);
+
+    if (!memories.length) {
+      showSummarizerMessage('No durable memories found.');
+      return;
+    }
+
+    let saved = 0;
+    let failedSync = 0;
+
+    for (const memory of memories) {
+      const result = await StorageManager.saveMemory(memory.fact, 'summarizer', memory.topic);
+
+      if (result.success) saved += 1;
+      if (result.serverSync?.success === false) failedSync += 1;
+    }
+
+    conversationInput.value = '';
+    await refreshDashboard();
+    showSummarizerMessage(`Extracted ${memories.length}, saved ${saved}${failedSync ? `, ${failedSync} sync warning${failedSync === 1 ? '' : 's'}` : ''}.`);
+  } catch (error) {
+    showSummarizerMessage(getErrorMessage(error));
+  } finally {
+    extractMemoryButton.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // LOGOUT
 // ---------------------------------------------------------------------------
 logoutButton.addEventListener('click', async () => {
@@ -241,6 +322,14 @@ function showMessage(msg) {
 
 function showDashboardMessage(msg) {
   dashboardMessage.textContent = msg;
+}
+
+function showSettingsMessage(msg) {
+  settingsMessage.textContent = msg;
+}
+
+function showSummarizerMessage(msg) {
+  summarizerMessage.textContent = msg;
 }
 
 function setButtonsDisabled(disabled) {
@@ -325,6 +414,14 @@ async function renderMemoryList() {
       <div class="memory-meta">${escapeHtml(memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
     </div>
   `).join('');
+}
+
+async function renderSettings() {
+  const settings = await SettingsManager.getSettings();
+
+  providerSelect.value = settings.provider;
+  apiKeyInput.value = settings.apiKey;
+  modelInput.value = settings.model;
 }
 
 function escapeHtml(value) {
