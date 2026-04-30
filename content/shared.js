@@ -1,6 +1,9 @@
 const MIN_TEXT_LENGTH = 150;
 const SETTLE_DELAY = 2500;
 const THROTTLE_MS = 300;
+const PROMPT_AI_RETRY_DELAY = 5 * 60 * 1000;
+
+let extractionPausedUntil = 0;
 
 // ---------------------------------------------------------------------------
 // RESPONSE WATCHER
@@ -46,6 +49,8 @@ export function startWatching({ platform, getConversationText }) {
 }
 
 function sendToBackground(platform, text) {
+  if (Date.now() < extractionPausedUntil) return;
+
   // chrome.runtime can become undefined if the service worker went to sleep
   // and the extension context was invalidated; guard before every call.
   if (!chrome?.runtime?.sendMessage) return;
@@ -58,6 +63,9 @@ function sendToBackground(platform, text) {
         if (response?.saved > 0) {
           console.log(`Cortex: +${response.saved} memor${response.saved === 1 ? 'y' : 'ies'} from ${platform}`);
         } else if (response?.error) {
+          if (isPromptAiReadinessError(response.error)) {
+            extractionPausedUntil = Date.now() + PROMPT_AI_RETRY_DELAY;
+          }
           console.warn('Cortex:', response.error);
         }
       }
@@ -65,6 +73,10 @@ function sendToBackground(platform, text) {
   } catch {
     // Context invalidated between the guard check and the call; ignore.
   }
+}
+
+function isPromptAiReadinessError(error) {
+  return /Prompt AI|model is not ready|model not downloaded|unavailable/i.test(error);
 }
 
 // ---------------------------------------------------------------------------

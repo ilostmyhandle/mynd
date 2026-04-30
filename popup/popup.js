@@ -19,6 +19,7 @@ const providerSelect = document.getElementById('provider-select');
 const apiKeyInput = document.getElementById('api-key-input');
 const modelInput = document.getElementById('model-input');
 const apiKeyWrap = document.getElementById('api-key-wrap');
+const checkPromptAiButton = document.getElementById('check-prompt-ai-btn');
 const saveSettingsButton = document.getElementById('save-settings-btn');
 const settingsMessage = document.getElementById('settings-message');
 const conversationInput = document.getElementById('conversation-input');
@@ -239,7 +240,27 @@ providerSelect.addEventListener('change', () => {
 function toggleApiKeyFields(provider) {
   const needsKey = provider !== 'chrome-ai';
   apiKeyWrap.style.display = needsKey ? '' : 'none';
+  checkPromptAiButton.classList.toggle('hidden', needsKey);
 }
+
+checkPromptAiButton.addEventListener('click', async () => {
+  checkPromptAiButton.disabled = true;
+  showSettingsMessage('Checking Prompt AI...');
+
+  try {
+    const result = await sendRuntimeMessage({ type: 'cortex.promptAiStatus' });
+
+    if (result.success) {
+      showSettingsMessage(`Prompt AI is ${result.available}.`);
+    } else {
+      showSettingsMessage(result.error || `Prompt AI status: ${result.available || 'unknown'}`);
+    }
+  } catch (error) {
+    showSettingsMessage(getErrorMessage(error));
+  } finally {
+    checkPromptAiButton.disabled = false;
+  }
+});
 
 saveSettingsButton.addEventListener('click', async () => {
   saveSettingsButton.disabled = true;
@@ -365,9 +386,13 @@ function getOAuthRedirectUrl() {
 }
 
 function extractMemoriesInBackground(platform, text) {
+  return sendRuntimeMessage({ type: 'cortex.extractMemories', platform, text });
+}
+
+function sendRuntimeMessage(message) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
-      { type: 'cortex.extractMemories', platform, text },
+      message,
       (response) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));

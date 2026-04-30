@@ -19,6 +19,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   }
+
+  if (message?.type === 'cortex.promptAiStatus') {
+    getPromptAiStatus()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
 });
 
 async function handleExtraction(platform, text) {
@@ -54,6 +61,23 @@ async function extractViaOffscreen(text) {
         }
         if (response?.success) resolve(response.memories);
         else reject(new Error(response?.error || 'Offscreen extraction failed.'));
+      }
+    );
+  });
+}
+
+async function getPromptAiStatus() {
+  await ensureOffscreen();
+
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      { type: 'cortex.offscreen.status' },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          return reject(new Error(chrome.runtime.lastError.message));
+        }
+
+        resolve(response);
       }
     );
   });

@@ -13,6 +13,14 @@ Topic must be one of: project, preference, workflow, person, general.
 Maximum 8 memories.`;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'cortex.offscreen.status') {
+    getChromeAIStatus()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+
+    return true;
+  }
+
   if (message?.type !== 'cortex.offscreen.extract') return false;
 
   extractWithChromeAI(message.text)
@@ -21,6 +29,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+async function getChromeAIStatus() {
+  const model = getChromeLanguageModel();
+
+  if (!model) {
+    return {
+      success: false,
+      available: 'missing',
+      error: 'Chrome Prompt AI API is not exposed in this browser.'
+    };
+  }
+
+  const availability = await getChromeAIAvailability(model);
+
+  if (availability === 'downloadable' || availability === 'downloading') {
+    return {
+      success: false,
+      available: availability,
+      error: 'Chrome Prompt AI model is not ready yet. Leave Chrome open and check chrome://on-device-internals.'
+    };
+  }
+
+  if (availability === 'unavailable') {
+    return {
+      success: false,
+      available: availability,
+      error: 'Chrome Prompt AI is unavailable on this browser/device.'
+    };
+  }
+
+  return {
+    success: true,
+    available: availability || 'available'
+  };
+}
 
 async function extractWithChromeAI(text) {
   const model = getChromeLanguageModel();
@@ -48,25 +91,32 @@ function getChromeLanguageModel() {
 }
 
 async function assertChromeAIAvailable(model) {
+  const availability = await getChromeAIAvailability(model);
+
+  if (availability === 'unavailable') {
+    throw new Error('Chrome Prompt AI is unavailable on this browser/device.');
+  }
+
+  if (availability === 'downloadable' || availability === 'downloading') {
+    throw new Error('Chrome Prompt AI model is not ready yet. Open chrome://on-device-internals and wait for the model to finish downloading.');
+  }
+}
+
+async function getChromeAIAvailability(model) {
   if (typeof model.availability === 'function') {
     const availability = await model.availability().catch(() => null);
-
-    if (availability === 'unavailable') {
-      throw new Error('Chrome Prompt AI is unavailable on this browser/device.');
-    }
-
-    if (availability === 'downloadable' || availability === 'downloading') {
-      throw new Error('Chrome Prompt AI model is not ready yet. Open chrome://on-device-internals and wait for the model to finish downloading.');
-    }
+    if (availability) return availability;
   }
 
   if (typeof model.capabilities === 'function') {
     const capabilities = await model.capabilities();
 
-    if (capabilities?.available === 'no') {
-      throw new Error('Chrome Prompt AI model not downloaded yet. Check chrome://on-device-internals.');
-    }
+    if (capabilities?.available === 'no') return 'unavailable';
+    if (capabilities?.available === 'readily') return 'available';
+    if (capabilities?.available) return capabilities.available;
   }
+
+  return 'available';
 }
 
 function createChromeAISession(model) {
