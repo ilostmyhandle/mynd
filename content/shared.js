@@ -3,6 +3,7 @@ const SETTLE_DELAY = 2500;
 const THROTTLE_MS = 300;
 const PROMPT_AI_RETRY_DELAY = 5 * 60 * 1000;
 const CARD_AUTO_DISMISS_MS = 60000;
+const CAPTURE_PROMPT_MIN_LENGTH = 400;
 
 let extractionPausedUntil = 0;
 let pendingInjectionPrefix = null;
@@ -116,28 +117,25 @@ export function startNavigationWatcher({ platform, getConversationText, getInput
   function onUrlChange() {
     const currentUrl = location.href;
     if (currentUrl === lastUrl) return;
+
+    const previousUrl = lastUrl;
     lastUrl = currentUrl;
 
-    // Force-extract only unsaved conversation content.
+    const state = getExtractionState(platform);
     const text = getConversationText();
     const unsaved = getUnsentText(platform, text);
-    if (unsaved && unsaved.length >= MIN_TEXT_LENGTH) {
-      const state = getExtractionState(platform);
-      state.lastExtractedLength = text.length;
-      sendToBackground(platform, unsaved);
+
+    if (shouldPromptCapture(state, previousUrl, unsaved)) {
+      state.lastPromptedCaptureUrl = previousUrl;
+      showCaptureCard({
+        platform,
+        text,
+        unsaved,
+        onDone: () => finishNavigation({ platform, getConversationText, getInput, setInput })
+      });
+    } else {
+      finishNavigation({ platform, getConversationText, getInput, setInput });
     }
-
-    const state = getExtractionState(platform);
-    state.lastExtractedLength = 0;
-    state.lastSignature = '';
-    state.sessionId = createSessionId(platform);
-
-    // Show card if new destination is a fresh/empty chat
-    setTimeout(() => {
-      if (isEmptyConversation(getConversationText)) {
-        showSuggestionsCard({ platform, getConversationText, getInput, setInput });
-      }
-    }, 900);
   }
 
   const origPush = history.pushState.bind(history);
@@ -156,9 +154,71 @@ export function startNavigationWatcher({ platform, getConversationText, getInput
   }, 1500);
 }
 
+function finishNavigation({ platform, getConversationText, getInput, setInput }) {
+  const state = getExtractionState(platform);
+  state.lastExtractedLength = 0;
+  state.lastSignature = '';
+  state.sessionId = createSessionId(platform);
+
+  setTimeout(() => {
+    if (isEmptyConversation(getConversationText)) {
+      showSuggestionsCard({ platform, getConversationText, getInput, setInput });
+    }
+  }, 900);
+}
+
 function isEmptyConversation(getConversationText) {
   const text = getConversationText();
   return !text || text.length < 80;
+}
+
+function shouldPromptCapture(state, previousUrl, unsaved) {
+  return (
+    unsaved &&
+    unsaved.length >= CAPTURE_PROMPT_MIN_LENGTH &&
+    state.lastPromptedCaptureUrl !== previousUrl
+  );
+}
+
+function showCaptureCard({ platform, text, unsaved, onDone }) {
+  if (document.getElementById('cortex-capture-card')) {
+    onDone();
+    return;
+  }
+
+  const card = buildShellCard('cortex-capture-card');
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#fff;">Cortex</span>
+      <button id="cortex-capture-dismiss" style="background:none;border:none;color:#555;cursor:pointer;font-size:18px;line-height:1;padding:0;" title="Dismiss">x</button>
+    </div>
+    <p style="margin:0 0 8px;font-size:13px;color:#f0f0f0;line-height:1.45;">Capture the conversation you just left?</p>
+    <p style="margin:0 0 12px;font-size:12px;color:#888;line-height:1.45;">Cortex found about ${Math.round(unsaved.length / 100) * 100} new characters that have not been turned into context yet.</p>
+    <div style="display:flex;gap:8px;">
+      <button id="cortex-capture-yes" style="flex:1;background:#ffffff;color:#0a0a0a;border:none;border-radius:7px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">Capture</button>
+      <button id="cortex-capture-no" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#888;border-radius:7px;padding:8px 12px;cursor:pointer;font-size:12px;">Skip</button>
+    </div>
+  `;
+
+  document.body.appendChild(card);
+  const dismissTimer = setTimeout(() => finish(false), CARD_AUTO_DISMISS_MS);
+
+  function finish(shouldCapture) {
+    clearTimeout(dismissTimer);
+    card.remove();
+
+    if (shouldCapture) {
+      const state = getExtractionState(platform);
+      state.lastExtractedLength = text.length;
+      sendToBackground(platform, unsaved);
+    }
+
+    onDone();
+  }
+
+  card.querySelector('#cortex-capture-dismiss').addEventListener('click', () => finish(false));
+  card.querySelector('#cortex-capture-no').addEventListener('click', () => finish(false));
+  card.querySelector('#cortex-capture-yes').addEventListener('click', () => finish(true));
 }
 
 // ---------------------------------------------------------------------------
@@ -226,24 +286,7 @@ async function showSuggestionsCard({ platform, getConversationText, getInput, se
 }
 
 function buildCard(summary, memories) {
-  const card = document.createElement('div');
-  card.id = 'cortex-card';
-  card.style.cssText = [
-    'position:fixed',
-    'bottom:88px',
-    'right:20px',
-    'z-index:2147483647',
-    'width:308px',
-    'background:#0a0a0a',
-    'border:1px solid #2a2a2a',
-    'border-radius:10px',
-    'padding:14px 16px',
-    'box-shadow:0 8px 32px rgba(0,0,0,0.6)',
-    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-    'font-size:13px',
-    'color:#f0f0f0',
-    'box-sizing:border-box',
-  ].join(';');
+  const card = buildShellCard('cortex-card');
 
   const summaryHtml = summary ? `
     <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;padding:10px;margin-bottom:10px;">
@@ -279,6 +322,29 @@ function buildCard(summary, memories) {
       <button id="cortex-card-skip" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#888;border-radius:7px;padding:8px 12px;cursor:pointer;font-size:12px;">Skip</button>
     </div>
   `;
+
+  return card;
+}
+
+function buildShellCard(id) {
+  const card = document.createElement('div');
+  card.id = id;
+  card.style.cssText = [
+    'position:fixed',
+    'bottom:88px',
+    'right:20px',
+    'z-index:2147483647',
+    'width:308px',
+    'background:#0a0a0a',
+    'border:1px solid #2a2a2a',
+    'border-radius:10px',
+    'padding:14px 16px',
+    'box-shadow:0 8px 32px rgba(0,0,0,0.6)',
+    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+    'font-size:13px',
+    'color:#f0f0f0',
+    'box-sizing:border-box',
+  ].join(';');
 
   return card;
 }
