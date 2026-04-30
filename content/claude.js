@@ -1,5 +1,6 @@
 import {
   startWatching,
+  startNavigationWatcher,
   setupInjector,
   setContentEditable,
   collectText,
@@ -55,4 +56,5 @@ function getSubmit() {
 }
 
 startWatching({ platform: 'claude', getConversationText });
+startNavigationWatcher({ platform: 'claude', getConversationText, getInput, getSubmit, setInput: setContentEditable });
 setupInjector({ getInput, getSubmit, setInput: setContentEditable });

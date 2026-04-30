@@ -1,5 +1,6 @@
 import {
   startWatching,
+  startNavigationWatcher,
   setupInjector,
   setContentEditable,
   collectText,
@@ -43,4 +44,5 @@ function getSubmit() {
 }
 
 startWatching({ platform: 'gemini', getConversationText });
+startNavigationWatcher({ platform: 'gemini', getConversationText, getInput, getSubmit, setInput: setContentEditable });
 setupInjector({ getInput, getSubmit, setInput: setContentEditable });

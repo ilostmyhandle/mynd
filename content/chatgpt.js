@@ -1,5 +1,6 @@
 import {
   startWatching,
+  startNavigationWatcher,
   setupInjector,
   setContentEditable,
   setReactTextarea,
@@ -42,4 +43,5 @@ function setInput(el, text) {
 }
 
 startWatching({ platform: 'chatgpt', getConversationText });
+startNavigationWatcher({ platform: 'chatgpt', getConversationText, getInput, getSubmit, setInput });
 setupInjector({ getInput, getSubmit, setInput });

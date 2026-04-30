@@ -8,9 +8,9 @@ Prefer stable facts about projects, preferences, goals, workflows, constraints, 
 Do not store secrets, passwords, API keys, access tokens, medical details, financial account details, or one-off transient chat content.
 Each fact must be a single sentence, specific, and useful without the original conversation.`;
 
-const JSON_INSTRUCTION = `Return strict JSON only, no other text: {"memories":[{"fact":"...","topic":"..."}]}
-Topic must be one of: project, preference, workflow, person, general.
-Maximum 8 memories.`;
+const JSON_INSTRUCTION = `Return strict JSON only - no other text:
+{"summary":"...","memories":[{"fact":"...","topic":"..."}]}
+Topic must be one of: project, preference, workflow, person, general.`;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'cortex.offscreen.status') {
@@ -24,7 +24,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type !== 'cortex.offscreen.extract') return false;
 
   extractWithChromeAI(message.text)
-    .then((memories) => sendResponse({ success: true, memories }))
+    .then((result) => sendResponse({ success: true, ...result }))
     .catch((err) => sendResponse({ success: false, error: err.message }));
 
   return true;
@@ -161,12 +161,16 @@ function parseMemories(raw) {
   const end = raw.lastIndexOf('}');
   if (start === -1 || end === -1) throw new Error('Chrome AI did not return JSON.');
   const json = JSON.parse(raw.slice(start, end + 1));
+  const summary = String(json?.summary || '').trim();
   const memories = Array.isArray(json?.memories) ? json.memories : [];
-  return memories
-    .map((m) => ({
-      fact: String(m.fact || '').trim(),
-      topic: String(m.topic || 'general').trim().toLowerCase() || 'general'
-    }))
-    .filter((m) => m.fact.length > 0)
-    .slice(0, 8);
+  return {
+    summary,
+    memories: memories
+      .map((m) => ({
+        fact: String(m.fact || '').trim(),
+        topic: String(m.topic || 'general').trim().toLowerCase() || 'general'
+      }))
+      .filter((m) => m.fact.length > 0)
+      .slice(0, 6)
+  };
 }

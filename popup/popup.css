@@ -208,6 +208,21 @@ textarea:focus {
   padding-top: 8px;
 }
 
+.memory-item-selectable {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  padding: 6px 6px 6px 4px;
+  border-radius: 6px;
+  border-top: 1px solid #2a2a2a;
+  transition: background 0.15s;
+}
+
+.memory-item-selectable:hover {
+  background: #2a2a2a;
+}
+
 .memory-fact {
   font-size: 12px;
   line-height: 1.4;

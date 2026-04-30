@@ -1,23 +1,24 @@
 import SettingsManager from './settings.js';
+import { supabase } from '../utils/supabase.js';
 
-const SYSTEM_PROMPT = `Extract durable user memories from the conversation.
+const SYSTEM_PROMPT = `Extract two things from this AI conversation:
 
-Return only facts that will help future AI sessions understand the user better.
-Prefer stable facts about projects, preferences, goals, workflows, constraints, people, and recurring context.
-Do not store secrets, passwords, API keys, access tokens, medical details, financial account details, or one-off transient chat content.
-Each fact must be a single sentence, specific, and useful without the original conversation.`;
+SUMMARY: Write 2-3 sentences in second person ("You were...", "You had decided...") describing what was worked on, what was established or agreed, and where it was heading. Be specific - this is read by a new AI session to continue the conversation. No vague generalities.
 
-const JSON_INSTRUCTION = `Return strict JSON only, no other text: {"memories":[{"fact":"...","topic":"..."}]}
-Topic must be one of: project, preference, workflow, person, general.
-Maximum 8 memories.`;
+MEMORIES: Up to 6 durable facts about the user worth keeping long-term: projects, tools, preferences, goals, constraints, workflows, people. Each is a single specific sentence. Skip secrets, one-off details, and anything already covered by the summary.`;
+
+const JSON_INSTRUCTION = `Return strict JSON only - no other text:
+{"summary":"...","memories":[{"fact":"...","topic":"..."}]}
+Topic must be one of: project, preference, workflow, person, general.`;
 
 const MEMORY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    summary: { type: 'string' },
     memories: {
       type: 'array',
-      maxItems: 8,
+      maxItems: 6,
       items: {
         type: 'object',
         additionalProperties: false,
@@ -29,16 +30,17 @@ const MEMORY_SCHEMA = {
       }
     }
   },
-  required: ['memories']
+  required: ['summary', 'memories']
 };
 
-// Gemini rejects additionalProperties; use a stripped-down version.
+// Gemini rejects additionalProperties; use a stripped schema.
 const GEMINI_SCHEMA = {
   type: 'object',
   properties: {
+    summary: { type: 'string' },
     memories: {
       type: 'array',
-      maxItems: 8,
+      maxItems: 6,
       items: {
         type: 'object',
         properties: {
@@ -52,21 +54,26 @@ const GEMINI_SCHEMA = {
       }
     }
   },
-  required: ['memories']
+  required: ['summary', 'memories']
 };
 
+// Returns { summary: string, memories: Array<{fact, topic}> }
 const Summarizer = {
   extractMemories: async (conversationText) => {
     const text = conversationText.trim();
-    if (!text) throw new Error('Paste conversation text first.');
+    if (!text) throw new Error('No conversation text to extract from.');
 
     const settings = await SettingsManager.getSettings();
+
+    if (settings.provider === 'default') {
+      return extractWithDefaultService(text);
+    }
 
     if (settings.provider === 'chrome-ai') {
       return extractWithChromeAI(text);
     }
 
-    if (!settings.apiKey) throw new Error('Add your AI API key first.');
+    if (!settings.apiKey) throw new Error('Add your API key in settings first.');
 
     if (settings.provider === 'gemini') return extractWithGemini(text, settings);
     if (settings.provider === 'anthropic') return extractWithAnthropic(text, settings);
@@ -75,8 +82,23 @@ const Summarizer = {
 };
 
 // ---------------------------------------------------------------------------
-// CHROME BUILT-IN AI (free, on-device, no key needed)
-// Requires Chrome Dev/Canary with chrome://flags/#prompt-api-for-gemini-nano
+// DEFAULT CORTEX SERVICE
+// Keeps provider keys off the client. Supabase Edge Function owns the OpenAI key.
+// ---------------------------------------------------------------------------
+async function extractWithDefaultService(conversationText) {
+  const { data, error } = await supabase.functions.invoke('extract-memories', {
+    body: { text: conversationText }
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Default extraction service failed.');
+  }
+
+  return normalizeResult(data);
+}
+
+// ---------------------------------------------------------------------------
+// CHROME BUILT-IN AI
 // ---------------------------------------------------------------------------
 async function extractWithChromeAI(conversationText) {
   const model = getChromeLanguageModel();
@@ -90,11 +112,10 @@ async function extractWithChromeAI(conversationText) {
   await assertChromeAIAvailable(model);
 
   const session = await createChromeAISession(model);
-
   const raw = await session.prompt(`Conversation:\n\n${conversationText}`);
   session.destroy?.();
 
-  return normalizeMemories(JSON.parse(extractJsonObject(raw)));
+  return normalizeResult(JSON.parse(extractJsonObject(raw)));
 }
 
 function getChromeLanguageModel() {
@@ -107,7 +128,6 @@ function getChromeLanguageModel() {
 async function assertChromeAIAvailable(model) {
   if (typeof model.availability === 'function') {
     const availability = await model.availability().catch(() => null);
-
     if (availability === 'unavailable') {
       throw new Error('Chrome Prompt AI is unavailable on this browser/device.');
     }
@@ -115,7 +135,6 @@ async function assertChromeAIAvailable(model) {
 
   if (typeof model.capabilities === 'function') {
     const capabilities = await model.capabilities();
-
     if (capabilities?.available === 'no') {
       throw new Error('Chrome Prompt AI model is not downloaded yet. Check chrome://on-device-internals.');
     }
@@ -125,18 +144,10 @@ async function assertChromeAIAvailable(model) {
 async function createChromeAISession(model) {
   if (globalThis.LanguageModel && model === globalThis.LanguageModel) {
     return model.create({
-      initialPrompts: [
-        {
-          role: 'system',
-          content: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}`
-        }
-      ]
+      initialPrompts: [{ role: 'system', content: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}` }]
     });
   }
-
-  return model.create({
-    systemPrompt: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}`
-  });
+  return model.create({ systemPrompt: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}` });
 }
 
 // ---------------------------------------------------------------------------
@@ -153,12 +164,7 @@ async function extractWithGemini(conversationText, settings) {
       system_instruction: {
         parts: [{ text: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}` }]
       },
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: `Conversation:\n\n${conversationText}` }]
-        }
-      ],
+      contents: [{ role: 'user', parts: [{ text: `Conversation:\n\n${conversationText}` }] }],
       generationConfig: {
         responseMimeType: 'application/json',
         responseSchema: GEMINI_SCHEMA,
@@ -168,14 +174,10 @@ async function extractWithGemini(conversationText, settings) {
   });
 
   const payload = await parseJsonResponse(response);
-  const outputText = payload.candidates?.[0]?.content?.parts
-    ?.map((p) => p.text)
-    .join('\n')
-    .trim();
-
+  const outputText = payload.candidates?.[0]?.content?.parts?.map((p) => p.text).join('\n').trim();
   if (!outputText) throw new Error('Gemini returned no extractable text.');
 
-  return normalizeMemories(JSON.parse(extractJsonObject(outputText)));
+  return normalizeResult(JSON.parse(extractJsonObject(outputText)));
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +202,7 @@ async function extractWithOpenAI(conversationText, settings) {
       text: {
         format: {
           type: 'json_schema',
-          name: 'cortex_memories',
+          name: 'cortex_extraction',
           strict: true,
           schema: MEMORY_SCHEMA
         }
@@ -212,7 +214,7 @@ async function extractWithOpenAI(conversationText, settings) {
   const outputText = payload.output_text || extractOpenAIOutputText(payload);
   if (!outputText) throw new Error('OpenAI returned no extractable text.');
 
-  return normalizeMemories(JSON.parse(outputText));
+  return normalizeResult(JSON.parse(outputText));
 }
 
 // ---------------------------------------------------------------------------
@@ -236,27 +238,19 @@ async function extractWithAnthropic(conversationText, settings) {
   });
 
   const payload = await parseJsonResponse(response);
-  const outputText = payload.content
-    ?.filter((item) => item.type === 'text')
-    .map((item) => item.text)
-    .join('\n')
-    .trim();
-
+  const outputText = payload.content?.filter((i) => i.type === 'text').map((i) => i.text).join('\n').trim();
   if (!outputText) throw new Error('Anthropic returned no extractable text.');
 
-  return normalizeMemories(JSON.parse(extractJsonObject(outputText)));
+  return normalizeResult(JSON.parse(extractJsonObject(outputText)));
 }
 
 // ---------------------------------------------------------------------------
-// SHARED HELPERS
+// HELPERS
 // ---------------------------------------------------------------------------
 async function parseJsonResponse(response) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    const message =
-      payload?.error?.message ||
-      payload?.error?.status ||
-      `${response.status} ${response.statusText}`;
+    const message = payload?.error?.message || payload?.error?.status || `${response.status} ${response.statusText}`;
     throw new Error(message);
   }
   return payload;
@@ -274,21 +268,23 @@ function extractOpenAIOutputText(payload) {
 function extractJsonObject(text) {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error('Model did not return JSON.');
-  }
+  if (start === -1 || end === -1 || end <= start) throw new Error('Model did not return JSON.');
   return text.slice(start, end + 1);
 }
 
-function normalizeMemories(payload) {
+function normalizeResult(payload) {
+  const summary = String(payload?.summary || '').trim();
   const memories = Array.isArray(payload?.memories) ? payload.memories : [];
-  return memories
-    .map((m) => ({
-      fact: String(m.fact || '').trim(),
-      topic: String(m.topic || 'general').trim().toLowerCase() || 'general'
-    }))
-    .filter((m) => m.fact.length > 0)
-    .slice(0, 8);
+  return {
+    summary,
+    memories: memories
+      .map((m) => ({
+        fact: String(m.fact || '').trim(),
+        topic: String(m.topic || 'general').trim().toLowerCase() || 'general'
+      }))
+      .filter((m) => m.fact.length > 0)
+      .slice(0, 6)
+  };
 }
 
 export default Summarizer;

@@ -30,18 +30,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleExtraction(platform, text) {
   const settings = await SettingsManager.getSettings();
-  let memories;
+  let result;
 
   if (settings.provider === 'chrome-ai') {
-    memories = await extractViaOffscreen(text);
+    result = await extractViaOffscreen(text);
   } else {
-    memories = await Summarizer.extractMemories(text);
+    result = await Summarizer.extractMemories(text);
+  }
+
+  const { summary, memories } = result;
+
+  if (summary) {
+    await chrome.storage.local.set({ [`cortex.lastSummary.${platform}`]: summary });
   }
 
   let saved = 0;
   for (const m of memories) {
-    const result = await StorageManager.saveMemory(m.fact, platform, m.topic);
-    if (result.success) saved++;
+    const r = await StorageManager.saveMemory(m.fact, platform, m.topic);
+    if (r.success) saved++;
   }
   return { success: true, extracted: memories.length, saved };
 }
@@ -59,7 +65,7 @@ async function extractViaOffscreen(text) {
         if (chrome.runtime.lastError) {
           return reject(new Error(chrome.runtime.lastError.message));
         }
-        if (response?.success) resolve(response.memories);
+        if (response?.success) resolve({ summary: response.summary || '', memories: response.memories || [] });
         else reject(new Error(response?.error || 'Offscreen extraction failed.'));
       }
     );

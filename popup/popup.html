@@ -61,16 +61,16 @@
     <div class="memory-panel">
       <div class="panel-title">AI settings</div>
       <select id="provider-select">
-        <option value="chrome-ai">Prompt AI (no API key)</option>
-        <option value="gemini">Gemini</option>
-        <option value="openai">OpenAI</option>
-        <option value="anthropic">Anthropic</option>
+        <option value="default">Default</option>
+        <option value="openai">OpenAI (own key)</option>
+        <option value="anthropic">Anthropic (own key)</option>
+        <option value="gemini">Gemini (own key)</option>
+        <option value="chrome-ai">Experimental: Prompt AI</option>
       </select>
+      <input id="model-input" type="text" placeholder="Model" />
       <div id="api-key-wrap">
-        <input id="api-key-input" type="password" placeholder="API key stored locally" />
-        <input id="model-input" type="text" placeholder="Model" />
+        <input id="api-key-input" type="password" placeholder="API key" />
       </div>
-      <button id="check-prompt-ai-btn" class="btn btn-secondary">Check Prompt AI</button>
       <button id="save-settings-btn" class="btn btn-secondary">Save Settings</button>
       <p id="settings-message" class="message"></p>
     </div>
@@ -85,6 +85,8 @@
     <div class="memory-panel">
       <div class="panel-title">Latest memories</div>
       <div id="memory-list" class="memory-list"></div>
+      <button id="apply-memories-btn" class="btn btn-primary" style="display:none;margin-top:8px;">Inject selected into next message</button>
+      <p id="apply-memories-message" class="message"></p>
     </div>
 
     <button id="logout-btn" class="btn btn-secondary">Log Out</button>

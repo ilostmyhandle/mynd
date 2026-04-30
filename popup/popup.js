@@ -15,11 +15,12 @@ const memoryTopicInput = document.getElementById('memory-topic-input');
 const saveMemoryButton = document.getElementById('save-memory-btn');
 const dashboardMessage = document.getElementById('dashboard-message');
 const memoryList = document.getElementById('memory-list');
+const applyMemoriesBtn = document.getElementById('apply-memories-btn');
+const applyMemoriesMessage = document.getElementById('apply-memories-message');
 const providerSelect = document.getElementById('provider-select');
 const apiKeyInput = document.getElementById('api-key-input');
 const modelInput = document.getElementById('model-input');
 const apiKeyWrap = document.getElementById('api-key-wrap');
-const checkPromptAiButton = document.getElementById('check-prompt-ai-btn');
 const saveSettingsButton = document.getElementById('save-settings-btn');
 const settingsMessage = document.getElementById('settings-message');
 const conversationInput = document.getElementById('conversation-input');
@@ -238,29 +239,22 @@ providerSelect.addEventListener('change', () => {
 });
 
 function toggleApiKeyFields(provider) {
-  const needsKey = provider !== 'chrome-ai';
+  const needsKey = provider !== 'default' && provider !== 'chrome-ai';
   apiKeyWrap.style.display = needsKey ? '' : 'none';
-  checkPromptAiButton.classList.toggle('hidden', needsKey);
-}
 
-checkPromptAiButton.addEventListener('click', async () => {
-  checkPromptAiButton.disabled = true;
-  showSettingsMessage('Checking Prompt AI...');
-
-  try {
-    const result = await sendRuntimeMessage({ type: 'cortex.promptAiStatus' });
-
-    if (result.success) {
-      showSettingsMessage(`Prompt AI session works. Availability reported: ${result.available}.`);
-    } else {
-      showSettingsMessage(result.error || `Prompt AI status: ${result.available || 'unknown'}`);
-    }
-  } catch (error) {
-    showSettingsMessage(getErrorMessage(error));
-  } finally {
-    checkPromptAiButton.disabled = false;
+  if (provider === 'default') {
+    modelInput.value = 'gpt-4o-mini';
+    modelInput.readOnly = true;
+    modelInput.style.opacity = '0.6';
+  } else if (provider === 'chrome-ai') {
+    modelInput.value = 'on-device';
+    modelInput.readOnly = true;
+    modelInput.style.opacity = '0.6';
+  } else {
+    modelInput.readOnly = false;
+    modelInput.style.opacity = '';
   }
-});
+}
 
 saveSettingsButton.addEventListener('click', async () => {
   saveSettingsButton.disabled = true;
@@ -300,6 +294,7 @@ extractMemoryButton.addEventListener('click', async () => {
   try {
     const settings = await SettingsManager.getSettings();
 
+    // Chrome AI runs in background/offscreen; popup context cannot rely on window.ai.
     if (settings.provider === 'chrome-ai') {
       const result = await extractMemoriesInBackground('summarizer', conversationText);
 
@@ -311,10 +306,11 @@ extractMemoryButton.addEventListener('click', async () => {
       return;
     }
 
-    const memories = await Summarizer.extractMemories(conversationText);
+    // default + all API providers can be called directly from the popup
+    const { summary, memories } = await Summarizer.extractMemories(conversationText);
 
-    if (!memories.length) {
-      showSummarizerMessage('No durable memories found.');
+    if (!memories.length && !summary) {
+      showSummarizerMessage('No memories or summary found.');
       return;
     }
 
@@ -330,7 +326,7 @@ extractMemoryButton.addEventListener('click', async () => {
 
     conversationInput.value = '';
     await refreshDashboard();
-    showSummarizerMessage(`Extracted ${memories.length}, saved ${saved}${failedSync ? `, ${failedSync} sync warning${failedSync === 1 ? '' : 's'}` : ''}.`);
+    showSummarizerMessage(`Extracted ${memories.length}, saved ${saved}${failedSync ? `, ${failedSync} sync warning${failedSync === 1 ? '' : 's'}` : ''}${summary ? ' + summary' : ''}.`);
   } catch (error) {
     showSummarizerMessage(getErrorMessage(error));
   } finally {
@@ -463,20 +459,66 @@ async function clearPendingOAuth() {
 
 async function renderMemoryList() {
   const memories = await StorageManager.getMemories();
-  const latest = memories.slice(0, 5);
+  const latest = memories.slice(0, 8);
+
+  applyMemoriesBtn.style.display = 'none';
+  applyMemoriesMessage.textContent = '';
 
   if (!latest.length) {
     memoryList.innerHTML = '<div class="empty-state">No memories stored yet.</div>';
     return;
   }
 
-  memoryList.innerHTML = latest.map((memory) => `
-    <div class="memory-item">
-      <div class="memory-fact">${escapeHtml(memory.fact)}</div>
-      <div class="memory-meta">${escapeHtml(memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
-    </div>
+  memoryList.innerHTML = latest.map((memory, i) => `
+    <label class="memory-item memory-item-selectable">
+      <input type="checkbox" class="memory-checkbox" data-index="${i}" style="flex-shrink:0;accent-color:#7c6af7;cursor:pointer;" />
+      <div style="flex:1;min-width:0;">
+        <div class="memory-fact">${escapeHtml(memory.fact)}</div>
+        <div class="memory-meta">${escapeHtml(memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
+      </div>
+    </label>
   `).join('');
+
+  // Store latest for use in apply handler
+  memoryList._memories = latest;
 }
+
+memoryList.addEventListener('change', () => {
+  const anyChecked = memoryList.querySelector('input[type="checkbox"]:checked');
+  applyMemoriesBtn.style.display = anyChecked ? '' : 'none';
+  applyMemoriesMessage.textContent = '';
+});
+
+applyMemoriesBtn.addEventListener('click', async () => {
+  const latest = memoryList._memories || [];
+  const selected = [...memoryList.querySelectorAll('input[type="checkbox"]:checked')]
+    .map(cb => latest[parseInt(cb.dataset.index)])
+    .filter(Boolean);
+
+  if (!selected.length) return;
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab?.id) {
+      applyMemoriesMessage.textContent = 'No active tab found.';
+      return;
+    }
+
+    await chrome.tabs.sendMessage(tab.id, {
+      type: 'cortex.queueInjection',
+      memories: selected
+    });
+
+    applyMemoriesMessage.textContent = `${selected.length} memor${selected.length === 1 ? 'y' : 'ies'} queued - send your next message.`;
+    applyMemoriesBtn.style.display = 'none';
+
+    // Uncheck all
+    memoryList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  } catch {
+    applyMemoriesMessage.textContent = 'Open Claude, ChatGPT, or Gemini first.';
+  }
+});
 
 async function renderSettings() {
   const settings = await SettingsManager.getSettings();
