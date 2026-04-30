@@ -14,7 +14,7 @@ const DEV_OAUTH_CALLBACK_ORIGIN = 'http://localhost:3000';
 // ---------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'cortex.extractMemories') {
-    handleExtraction(message.platform, message.text)
+    handleExtraction(message.platform, message.text, message.sessionId)
       .then(sendResponse)
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
@@ -28,7 +28,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function handleExtraction(platform, text) {
+async function handleExtraction(platform, text, sessionId = '') {
   const settings = await SettingsManager.getSettings();
   let result;
 
@@ -49,7 +49,9 @@ async function handleExtraction(platform, text) {
     const r = await StorageManager.saveMemory(m.fact, platform, m.topic, {
       entity: m.entity,
       category: m.category,
-      sessionId: m.sessionId
+      sessionId: m.sessionId || sessionId,
+      action: m.action,
+      target: m.target
     });
     if (r.success) saved++;
   }

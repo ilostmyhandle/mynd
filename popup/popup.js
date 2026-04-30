@@ -321,7 +321,9 @@ extractMemoryButton.addEventListener('click', async () => {
       const result = await StorageManager.saveMemory(memory.fact, 'summarizer', memory.topic, {
         entity: memory.entity,
         category: memory.category,
-        sessionId: memory.sessionId
+        sessionId: memory.sessionId,
+        action: memory.action,
+        target: memory.target
       });
 
       if (result.success) saved += 1;

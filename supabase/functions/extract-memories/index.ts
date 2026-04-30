@@ -14,7 +14,10 @@ For each memory, include:
 - fact: the durable fact as one sentence.
 - topic: one of project, preference, workflow, person, general.
 - entity: the main normalized thing this memory is about, such as "Cortex", "Supabase", "OpenAI", "Claude", "sushi", or "" if none.
-- category: a broader grouping such as project, tool, preference, workflow, constraint, person, or general.`;
+- category: a broader grouping such as project, tool, preference, workflow, constraint, person, or general.
+- action: add, update, or delete. Use update when a new fact clearly replaces an older likely memory. Use delete when the user explicitly retracts, abandons, or says a remembered fact is no longer true. Otherwise use add.
+- target: for update/delete, the old fact or entity being replaced/retired; otherwise "".
+Do not use update/delete unless the conversation makes the change explicit.`;
 
 const MEMORY_SCHEMA = {
   type: 'object',
@@ -37,9 +40,14 @@ const MEMORY_SCHEMA = {
           category: {
             type: 'string',
             enum: ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general']
-          }
+          },
+          action: {
+            type: 'string',
+            enum: ['add', 'update', 'delete']
+          },
+          target: { type: 'string' }
         },
-        required: ['fact', 'topic', 'entity', 'category']
+        required: ['fact', 'topic', 'entity', 'category', 'action', 'target']
       }
     }
   },
@@ -139,7 +147,9 @@ function normalizeResult(payload: any) {
         fact: String(memory.fact || '').trim(),
         topic: normalizeTopic(memory.topic),
         entity: String(memory.entity || '').trim(),
-        category: normalizeCategory(memory.category || memory.topic)
+        category: normalizeCategory(memory.category || memory.topic),
+        action: normalizeAction(memory.action),
+        target: String(memory.target || '').trim()
       }))
       .filter((memory: { fact: string }) => memory.fact.length > 0)
       .slice(0, 6)
@@ -156,6 +166,11 @@ function normalizeCategory(category: unknown) {
   return ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general'].includes(value)
     ? value
     : 'general';
+}
+
+function normalizeAction(action: unknown) {
+  const value = String(action || 'add').trim().toLowerCase();
+  return ['add', 'update', 'delete'].includes(value) ? value : 'add';
 }
 
 function json(body: unknown, status = 200) {

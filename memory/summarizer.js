@@ -11,10 +11,13 @@ For each memory, include:
 - fact: the durable fact as one sentence.
 - topic: one of project, preference, workflow, person, general.
 - entity: the main normalized thing this memory is about, such as "Cortex", "Supabase", "OpenAI", "Claude", "sushi", or "" if none.
-- category: a broader grouping such as project, tool, preference, workflow, constraint, person, or general.`;
+- category: a broader grouping such as project, tool, preference, workflow, constraint, person, or general.
+- action: add, update, or delete. Use update when a new fact clearly replaces an older likely memory. Use delete when the user explicitly retracts, abandons, or says a remembered fact is no longer true. Otherwise use add.
+- target: for update/delete, the old fact or entity being replaced/retired; otherwise "".
+Do not use update/delete unless the conversation makes the change explicit.`;
 
 const JSON_INSTRUCTION = `Return strict JSON only - no other text:
-{"summary":"...","memories":[{"fact":"...","topic":"...","entity":"...","category":"..."}]}`;
+{"summary":"...","memories":[{"fact":"...","topic":"...","entity":"...","category":"...","action":"add","target":""}]}`;
 
 const MEMORY_SCHEMA = {
   type: 'object',
@@ -37,9 +40,14 @@ const MEMORY_SCHEMA = {
           category: {
             type: 'string',
             enum: ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general']
-          }
+          },
+          action: {
+            type: 'string',
+            enum: ['add', 'update', 'delete']
+          },
+          target: { type: 'string' }
         },
-        required: ['fact', 'topic', 'entity', 'category']
+        required: ['fact', 'topic', 'entity', 'category', 'action', 'target']
       }
     }
   },
@@ -66,9 +74,14 @@ const GEMINI_SCHEMA = {
           category: {
             type: 'string',
             enum: ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general']
-          }
+          },
+          action: {
+            type: 'string',
+            enum: ['add', 'update', 'delete']
+          },
+          target: { type: 'string' }
         },
-        required: ['fact', 'topic', 'entity', 'category']
+        required: ['fact', 'topic', 'entity', 'category', 'action', 'target']
       }
     }
   },
@@ -300,7 +313,9 @@ function normalizeResult(payload) {
         fact: String(m.fact || '').trim(),
         topic: normalizeTopic(m.topic),
         entity: String(m.entity || '').trim(),
-        category: normalizeCategory(m.category || m.topic)
+        category: normalizeCategory(m.category || m.topic),
+        action: normalizeAction(m.action),
+        target: String(m.target || '').trim()
       }))
       .filter((m) => m.fact.length > 0)
       .slice(0, 6)
@@ -315,6 +330,11 @@ function normalizeTopic(topic) {
 function normalizeCategory(category) {
   const value = String(category || 'general').trim().toLowerCase();
   return ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general'].includes(value) ? value : 'general';
+}
+
+function normalizeAction(action) {
+  const value = String(action || 'add').trim().toLowerCase();
+  return ['add', 'update', 'delete'].includes(value) ? value : 'add';
 }
 
 export default Summarizer;

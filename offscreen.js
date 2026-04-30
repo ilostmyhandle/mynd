@@ -9,10 +9,12 @@ Do not store secrets, passwords, API keys, access tokens, medical details, finan
 Each fact must be a single sentence, specific, and useful without the original conversation.`;
 
 const JSON_INSTRUCTION = `Return strict JSON only - no other text:
-{"summary":"...","memories":[{"fact":"...","topic":"...","entity":"...","category":"..."}]}
+{"summary":"...","memories":[{"fact":"...","topic":"...","entity":"...","category":"...","action":"add","target":""}]}
 Topic must be one of: project, preference, workflow, person, general.
 Entity is the main normalized thing this memory is about, or "" if none.
-Category must be one of: project, tool, preference, workflow, constraint, person, general.`;
+Category must be one of: project, tool, preference, workflow, constraint, person, general.
+Action must be add, update, or delete. Only use update/delete when the user explicitly replaces or retracts a durable fact.
+Target is the old fact or entity being replaced/retired, or "" for add.`;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'cortex.offscreen.status') {
@@ -172,7 +174,9 @@ function parseMemories(raw) {
         fact: String(m.fact || '').trim(),
         topic: normalizeTopic(m.topic),
         entity: String(m.entity || '').trim(),
-        category: normalizeCategory(m.category || m.topic)
+        category: normalizeCategory(m.category || m.topic),
+        action: normalizeAction(m.action),
+        target: String(m.target || '').trim()
       }))
       .filter((m) => m.fact.length > 0)
       .slice(0, 6)
@@ -187,4 +191,9 @@ function normalizeTopic(topic) {
 function normalizeCategory(category) {
   const value = String(category || 'general').trim().toLowerCase();
   return ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general'].includes(value) ? value : 'general';
+}
+
+function normalizeAction(action) {
+  const value = String(action || 'add').trim().toLowerCase();
+  return ['add', 'update', 'delete'].includes(value) ? value : 'add';
 }

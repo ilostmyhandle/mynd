@@ -66,7 +66,7 @@ function sendToBackground(platform, text) {
 
   try {
     chrome.runtime.sendMessage(
-      { type: 'cortex.extractMemories', platform, text },
+      { type: 'cortex.extractMemories', platform, text, sessionId: state.sessionId },
       (response) => {
         if (chrome.runtime?.lastError) return;
         if (response?.saved > 0) {
@@ -90,7 +90,11 @@ function isPromptAiReadinessError(error) {
 
 function getExtractionState(platform) {
   if (!extractionStates.has(platform)) {
-    extractionStates.set(platform, { lastExtractedLength: 0, lastSignature: '' });
+    extractionStates.set(platform, {
+      lastExtractedLength: 0,
+      lastSignature: '',
+      sessionId: createSessionId(platform)
+    });
   }
   return extractionStates.get(platform);
 }
@@ -118,9 +122,15 @@ export function startNavigationWatcher({ platform, getConversationText, getInput
     const text = getConversationText();
     const unsaved = getUnsentText(platform, text);
     if (unsaved && unsaved.length >= MIN_TEXT_LENGTH) {
-      getExtractionState(platform).lastExtractedLength = text.length;
+      const state = getExtractionState(platform);
+      state.lastExtractedLength = text.length;
       sendToBackground(platform, unsaved);
     }
+
+    const state = getExtractionState(platform);
+    state.lastExtractedLength = 0;
+    state.lastSignature = '';
+    state.sessionId = createSessionId(platform);
 
     // Show card if new destination is a fresh/empty chat
     setTimeout(() => {
@@ -170,7 +180,7 @@ async function showSuggestionsCard({ platform, getConversationText, getInput, se
 
   if (!memories.length && !lastSummary) return;
 
-    const context = document.title + ' ' + location.pathname;
+  const context = document.title + ' ' + location.pathname;
   const top = findRelevant(memories, context).slice(0, 5);
 
   const card = buildCard(lastSummary, top);
@@ -248,7 +258,10 @@ function buildCard(summary, memories) {
       ${memories.map((m, i) => `
         <label class="cortex-chip" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:6px 8px;border-radius:6px;border:1px solid #2a2a2a;background:#1a1a1a;transition:all 0.15s;">
           <input type="checkbox" data-index="${i}" style="margin-top:2px;flex-shrink:0;cursor:pointer;accent-color:#ffffff;" />
-          <span style="line-height:1.4;color:#e8e8e8;font-size:12px;">${escapeHtml(m.fact)}</span>
+          <span style="line-height:1.4;color:#e8e8e8;font-size:12px;">
+            <span style="display:block;color:#888;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">${escapeHtml(getMemoryGroup(m))}</span>
+            ${escapeHtml(m.fact)}
+          </span>
         </label>
       `).join('')}
     </div>
@@ -363,6 +376,14 @@ function findRelevant(memories, context) {
     };
     return score(b) - score(a);
   });
+}
+
+function createSessionId(platform) {
+  return `${platform}:${Date.now()}:${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`;
+}
+
+function getMemoryGroup(memory) {
+  return memory.entity || memory.category || memory.topic || 'general';
 }
 
 async function markMemoriesRetrieved(selectedMemories) {

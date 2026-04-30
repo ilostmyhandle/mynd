@@ -11,6 +11,11 @@ const MEMORY_LIMIT = 200;
 const StorageManager = {
 
   getMemories: async () => {
+    const memories = await StorageManager.getAllMemories();
+    return memories.filter((memory) => !memory.archived);
+  },
+
+  getAllMemories: async () => {
     return new Promise((resolve) => {
       chrome.storage.local.get(['memories'], (result) => {
         resolve(result.memories || []);
@@ -19,13 +24,54 @@ const StorageManager = {
   },
 
   saveMemory: async (fact, platform, topic, metadata = {}) => {
-    let memories = await StorageManager.getMemories();
+    let memories = await StorageManager.getAllMemories();
     const now = new Date().toISOString();
     const normalizedFact = normalizeFact(fact);
     const hash = await hashMemory(normalizedFact);
+    const action = normalizeAction(metadata.action);
+    const target = normalizeFact(metadata.target);
+
+    if (action === 'delete') {
+      const targetIndex = findMemoryIndex(memories, { normalizedFact, hash, target, metadata });
+      if (targetIndex === -1) {
+        return { success: true, total: activeCount(memories), skipped: true, reason: 'delete_target_not_found' };
+      }
+
+      memories[targetIndex] = {
+        ...memories[targetIndex],
+        archived: true,
+        archivedAt: now,
+        updatedAt: now,
+        archiveReason: fact.trim()
+      };
+
+      return persistMemories(memories, { success: true, archived: true, action: 'delete' });
+    }
+
+    if (action === 'update') {
+      const targetIndex = findMemoryIndex(memories, { normalizedFact, hash, target, metadata });
+      if (targetIndex !== -1) {
+        memories[targetIndex] = {
+          ...memories[targetIndex],
+          hash,
+          fact: fact.trim(),
+          platform,
+          topic: topic || memories[targetIndex].topic || 'general',
+          entity: metadata.entity || memories[targetIndex].entity || '',
+          category: metadata.category || memories[targetIndex].category || topic || 'general',
+          sessionId: metadata.sessionId || memories[targetIndex].sessionId || '',
+          timestamp: now,
+          updatedAt: now,
+          archived: false,
+          uses: Number(memories[targetIndex].uses || 0) + 1
+        };
+
+        return persistMemories(memories, { success: true, updated: true, action: 'update' });
+      }
+    }
 
     const existingIndex = memories.findIndex(
-      (m) => m.hash === hash || normalizeFact(m.fact) === normalizedFact
+      (m) => !m.archived && (m.hash === hash || normalizeFact(m.fact) === normalizedFact)
     );
     const isDuplicate = existingIndex !== -1;
 
@@ -37,7 +83,7 @@ const StorageManager = {
       memories[existingIndex].entity = memories[existingIndex].entity || metadata.entity || '';
       memories[existingIndex].category = memories[existingIndex].category || metadata.category || topic || 'general';
     } else {
-      if (memories.length >= MEMORY_LIMIT) {
+      if (activeCount(memories) >= MEMORY_LIMIT) {
         return { success: false, reason: "limit_reached" };
       }
 
@@ -55,27 +101,18 @@ const StorageManager = {
         updatedAt: now,
         lastRetrieved: '',
         retrievals: 0,
-        uses: 1
+        uses: 1,
+        archived: false
       };
 
       memories.unshift(newMemory);
     }
 
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ memories, total: memories.length }, async () => {
-        console.log("Cortex: Memory saved.");
-
-        const sync = isDuplicate ?
-          { skipped: true, reason: "duplicate" } :
-          await StorageManager.syncServerMemoryCount();
-
-        resolve({
-          success: true,
-          total: memories.length,
-          duplicate: isDuplicate,
-          serverSync: sync
-        });
-      });
+    return persistMemories(memories, {
+      success: true,
+      duplicate: isDuplicate,
+      action: isDuplicate ? 'duplicate' : 'add',
+      syncServerCount: !isDuplicate
     });
   },
 
@@ -123,12 +160,12 @@ const StorageManager = {
   },
 
   deleteMemory: async (memoryId) => {
-    let memories = await StorageManager.getMemories();
+    let memories = await StorageManager.getAllMemories();
 
     memories = memories.filter((m) => m.id !== memoryId);
 
     return new Promise((resolve) => {
-      chrome.storage.local.set({ memories, total: memories.length }, () => {
+      chrome.storage.local.set({ memories, total: activeCount(memories) }, () => {
         resolve({ success: true });
       });
     });
@@ -156,6 +193,47 @@ const StorageManager = {
     });
   }
 };
+
+function persistMemories(memories, result) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ memories, total: activeCount(memories) }, async () => {
+      console.log("Cortex: Memory saved.");
+
+      const sync = result.syncServerCount ?
+        await StorageManager.syncServerMemoryCount() :
+        { skipped: true, reason: result.action || "no_new_memory" };
+
+      resolve({
+        ...result,
+        total: activeCount(memories),
+        serverSync: sync
+      });
+    });
+  });
+}
+
+function findMemoryIndex(memories, { normalizedFact, hash, target, metadata }) {
+  const normalizedEntity = normalizeFact(metadata.entity);
+
+  return memories.findIndex((memory) => {
+    if (memory.archived) return false;
+    if (memory.hash === hash) return true;
+    if (normalizeFact(memory.fact) === normalizedFact) return true;
+    if (target && normalizeFact(memory.fact) === target) return true;
+    if (target && normalizeFact(memory.entity) === target) return true;
+    if (normalizedEntity && normalizeFact(memory.entity) === normalizedEntity) return true;
+    return false;
+  });
+}
+
+function normalizeAction(action) {
+  const value = String(action || 'add').trim().toLowerCase();
+  return ['add', 'update', 'delete'].includes(value) ? value : 'add';
+}
+
+function activeCount(memories) {
+  return memories.filter((memory) => !memory.archived).length;
+}
 
 function normalizeFact(fact) {
   return String(fact || '')
