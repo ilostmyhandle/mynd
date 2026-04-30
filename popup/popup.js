@@ -318,7 +318,11 @@ extractMemoryButton.addEventListener('click', async () => {
     let failedSync = 0;
 
     for (const memory of memories) {
-      const result = await StorageManager.saveMemory(memory.fact, 'summarizer', memory.topic);
+      const result = await StorageManager.saveMemory(memory.fact, 'summarizer', memory.topic, {
+        entity: memory.entity,
+        category: memory.category,
+        sessionId: memory.sessionId
+      });
 
       if (result.success) saved += 1;
       if (result.serverSync?.success === false) failedSync += 1;
@@ -474,7 +478,7 @@ async function renderMemoryList() {
       <input type="checkbox" class="memory-checkbox" data-index="${i}" style="flex-shrink:0;accent-color:#7c6af7;cursor:pointer;" />
       <div style="flex:1;min-width:0;">
         <div class="memory-fact">${escapeHtml(memory.fact)}</div>
-        <div class="memory-meta">${escapeHtml(memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
+        <div class="memory-meta">${escapeHtml(memory.entity || memory.category || memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
       </div>
     </label>
   `).join('');
@@ -510,6 +514,8 @@ applyMemoriesBtn.addEventListener('click', async () => {
       memories: selected
     });
 
+    await markMemoriesRetrieved(selected);
+
     applyMemoriesMessage.textContent = `${selected.length} memor${selected.length === 1 ? 'y' : 'ies'} queued - send your next message.`;
     applyMemoriesBtn.style.display = 'none';
 
@@ -519,6 +525,24 @@ applyMemoriesBtn.addEventListener('click', async () => {
     applyMemoriesMessage.textContent = 'Open Claude, ChatGPT, or Gemini first.';
   }
 });
+
+async function markMemoriesRetrieved(selectedMemories) {
+  const selectedIds = new Set(selectedMemories.map((memory) => memory.id).filter(Boolean));
+  if (!selectedIds.size) return;
+
+  const memories = await StorageManager.getMemories();
+  const now = new Date().toISOString();
+  const updated = memories.map((memory) => {
+    if (!selectedIds.has(memory.id)) return memory;
+    return {
+      ...memory,
+      lastRetrieved: now,
+      retrievals: Number(memory.retrievals || 0) + 1
+    };
+  });
+
+  await chrome.storage.local.set({ memories: updated });
+}
 
 async function renderSettings() {
   const settings = await SettingsManager.getSettings();

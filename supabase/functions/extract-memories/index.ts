@@ -8,7 +8,13 @@ const SYSTEM_PROMPT = `Extract two things from this AI conversation:
 
 SUMMARY: Write 2-3 sentences in second person ("You were...", "You had decided...") describing what was worked on, what was established or agreed, and where it was heading. Be specific - this is read by a new AI session to continue the conversation. No vague generalities.
 
-MEMORIES: Up to 6 durable facts about the user worth keeping long-term: projects, tools, preferences, goals, constraints, workflows, people. Each is a single specific sentence. Skip secrets, one-off details, and anything already covered by the summary.`;
+MEMORIES: Up to 6 durable facts about the user worth keeping long-term: projects, tools, preferences, goals, constraints, workflows, people. Each is a single specific sentence. Skip secrets, one-off details, and anything already covered by the summary.
+
+For each memory, include:
+- fact: the durable fact as one sentence.
+- topic: one of project, preference, workflow, person, general.
+- entity: the main normalized thing this memory is about, such as "Cortex", "Supabase", "OpenAI", "Claude", "sushi", or "" if none.
+- category: a broader grouping such as project, tool, preference, workflow, constraint, person, or general.`;
 
 const MEMORY_SCHEMA = {
   type: 'object',
@@ -26,9 +32,14 @@ const MEMORY_SCHEMA = {
           topic: {
             type: 'string',
             enum: ['project', 'preference', 'workflow', 'person', 'general']
+          },
+          entity: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general']
           }
         },
-        required: ['fact', 'topic']
+        required: ['fact', 'topic', 'entity', 'category']
       }
     }
   },
@@ -126,11 +137,25 @@ function normalizeResult(payload: any) {
     memories: memories
       .map((memory: any) => ({
         fact: String(memory.fact || '').trim(),
-        topic: String(memory.topic || 'general').trim().toLowerCase() || 'general'
+        topic: normalizeTopic(memory.topic),
+        entity: String(memory.entity || '').trim(),
+        category: normalizeCategory(memory.category || memory.topic)
       }))
       .filter((memory: { fact: string }) => memory.fact.length > 0)
       .slice(0, 6)
   };
+}
+
+function normalizeTopic(topic: unknown) {
+  const value = String(topic || 'general').trim().toLowerCase();
+  return ['project', 'preference', 'workflow', 'person', 'general'].includes(value) ? value : 'general';
+}
+
+function normalizeCategory(category: unknown) {
+  const value = String(category || 'general').trim().toLowerCase();
+  return ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general'].includes(value)
+    ? value
+    : 'general';
 }
 
 function json(body: unknown, status = 200) {

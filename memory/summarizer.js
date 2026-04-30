@@ -5,11 +5,16 @@ const SYSTEM_PROMPT = `Extract two things from this AI conversation:
 
 SUMMARY: Write 2-3 sentences in second person ("You were...", "You had decided...") describing what was worked on, what was established or agreed, and where it was heading. Be specific - this is read by a new AI session to continue the conversation. No vague generalities.
 
-MEMORIES: Up to 6 durable facts about the user worth keeping long-term: projects, tools, preferences, goals, constraints, workflows, people. Each is a single specific sentence. Skip secrets, one-off details, and anything already covered by the summary.`;
+MEMORIES: Up to 6 durable facts about the user worth keeping long-term: projects, tools, preferences, goals, constraints, workflows, people. Each is a single specific sentence. Skip secrets, one-off details, and anything already covered by the summary.
+
+For each memory, include:
+- fact: the durable fact as one sentence.
+- topic: one of project, preference, workflow, person, general.
+- entity: the main normalized thing this memory is about, such as "Cortex", "Supabase", "OpenAI", "Claude", "sushi", or "" if none.
+- category: a broader grouping such as project, tool, preference, workflow, constraint, person, or general.`;
 
 const JSON_INSTRUCTION = `Return strict JSON only - no other text:
-{"summary":"...","memories":[{"fact":"...","topic":"..."}]}
-Topic must be one of: project, preference, workflow, person, general.`;
+{"summary":"...","memories":[{"fact":"...","topic":"...","entity":"...","category":"..."}]}`;
 
 const MEMORY_SCHEMA = {
   type: 'object',
@@ -24,9 +29,17 @@ const MEMORY_SCHEMA = {
         additionalProperties: false,
         properties: {
           fact: { type: 'string' },
-          topic: { type: 'string' }
+          topic: {
+            type: 'string',
+            enum: ['project', 'preference', 'workflow', 'person', 'general']
+          },
+          entity: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general']
+          }
         },
-        required: ['fact', 'topic']
+        required: ['fact', 'topic', 'entity', 'category']
       }
     }
   },
@@ -48,9 +61,14 @@ const GEMINI_SCHEMA = {
           topic: {
             type: 'string',
             enum: ['project', 'preference', 'workflow', 'person', 'general']
+          },
+          entity: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general']
           }
         },
-        required: ['fact', 'topic']
+        required: ['fact', 'topic', 'entity', 'category']
       }
     }
   },
@@ -280,11 +298,23 @@ function normalizeResult(payload) {
     memories: memories
       .map((m) => ({
         fact: String(m.fact || '').trim(),
-        topic: String(m.topic || 'general').trim().toLowerCase() || 'general'
+        topic: normalizeTopic(m.topic),
+        entity: String(m.entity || '').trim(),
+        category: normalizeCategory(m.category || m.topic)
       }))
       .filter((m) => m.fact.length > 0)
       .slice(0, 6)
   };
+}
+
+function normalizeTopic(topic) {
+  const value = String(topic || 'general').trim().toLowerCase();
+  return ['project', 'preference', 'workflow', 'person', 'general'].includes(value) ? value : 'general';
+}
+
+function normalizeCategory(category) {
+  const value = String(category || 'general').trim().toLowerCase();
+  return ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general'].includes(value) ? value : 'general';
 }
 
 export default Summarizer;

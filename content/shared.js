@@ -170,7 +170,7 @@ async function showSuggestionsCard({ platform, getConversationText, getInput, se
 
   if (!memories.length && !lastSummary) return;
 
-  const context = document.title + ' ' + location.pathname;
+    const context = document.title + ' ' + location.pathname;
   const top = findRelevant(memories, context).slice(0, 5);
 
   const card = buildCard(lastSummary, top);
@@ -200,6 +200,7 @@ async function showSuggestionsCard({ platform, getConversationText, getInput, se
       .filter(Boolean);
 
     dismiss();
+    markMemoriesRetrieved(selectedMemories);
 
     const prefix = buildInjectionText(lastSummary, selectedMemories);
     if (!prefix) return;
@@ -348,10 +349,40 @@ export function setupInjector({ getInput, getSubmit, setInput }) {
 function findRelevant(memories, context) {
   const lower = context.toLowerCase();
   return [...memories].sort((a, b) => {
-    const score = (m) =>
-      m.fact.toLowerCase().split(/\s+/).filter((w) => w.length > 3 && lower.includes(w)).length;
+    const score = (m) => {
+      const factScore = String(m.fact || '').toLowerCase().split(/\s+/)
+        .filter((w) => w.length > 3 && lower.includes(w))
+        .length;
+      const entityScore = m.entity && lower.includes(String(m.entity).toLowerCase()) ? 4 : 0;
+      const categoryScore = m.category && lower.includes(String(m.category).toLowerCase()) ? 2 : 0;
+      const useScore = Math.min(Number(m.uses || 0), 5) * 0.4;
+      const retrievalScore = Math.min(Number(m.retrievals || 0), 5) * 0.3;
+      const agePenalty = Math.max(0, Date.now() - Date.parse(m.timestamp || m.createdAt || 0)) / 86400000 * 0.01;
+
+      return factScore + entityScore + categoryScore + useScore + retrievalScore - agePenalty;
+    };
     return score(b) - score(a);
   });
+}
+
+async function markMemoriesRetrieved(selectedMemories) {
+  if (!selectedMemories.length) return;
+
+  const selectedIds = new Set(selectedMemories.map((memory) => memory.id).filter(Boolean));
+  if (!selectedIds.size) return;
+
+  const stored = await chrome.storage.local.get(['memories']);
+  const now = new Date().toISOString();
+  const memories = (stored.memories || []).map((memory) => {
+    if (!selectedIds.has(memory.id)) return memory;
+    return {
+      ...memory,
+      lastRetrieved: now,
+      retrievals: Number(memory.retrievals || 0) + 1
+    };
+  });
+
+  await chrome.storage.local.set({ memories });
 }
 
 function getText(el) {

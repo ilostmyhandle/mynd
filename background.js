@@ -46,7 +46,11 @@ async function handleExtraction(platform, text) {
 
   let saved = 0;
   for (const m of memories) {
-    const r = await StorageManager.saveMemory(m.fact, platform, m.topic);
+    const r = await StorageManager.saveMemory(m.fact, platform, m.topic, {
+      entity: m.entity,
+      category: m.category,
+      sessionId: m.sessionId
+    });
     if (r.success) saved++;
   }
   return { success: true, extracted: memories.length, saved };

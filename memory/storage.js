@@ -18,17 +18,24 @@ const StorageManager = {
     });
   },
 
-  saveMemory: async (fact, platform, topic) => {
+  saveMemory: async (fact, platform, topic, metadata = {}) => {
     let memories = await StorageManager.getMemories();
+    const now = new Date().toISOString();
+    const normalizedFact = normalizeFact(fact);
+    const hash = await hashMemory(normalizedFact);
 
     const existingIndex = memories.findIndex(
-      (m) => m.fact.toLowerCase() === fact.toLowerCase()
+      (m) => m.hash === hash || normalizeFact(m.fact) === normalizedFact
     );
     const isDuplicate = existingIndex !== -1;
 
     if (isDuplicate) {
       memories[existingIndex].uses += 1;
-      memories[existingIndex].timestamp = new Date().toISOString();
+      memories[existingIndex].timestamp = now;
+      memories[existingIndex].updatedAt = now;
+      memories[existingIndex].hash = memories[existingIndex].hash || hash;
+      memories[existingIndex].entity = memories[existingIndex].entity || metadata.entity || '';
+      memories[existingIndex].category = memories[existingIndex].category || metadata.category || topic || 'general';
     } else {
       if (memories.length >= MEMORY_LIMIT) {
         return { success: false, reason: "limit_reached" };
@@ -36,10 +43,18 @@ const StorageManager = {
 
       const newMemory = {
         id: crypto.randomUUID(),
-        fact: fact,
+        hash,
+        fact: fact.trim(),
         platform: platform,
         topic: topic || "general",
-        timestamp: new Date().toISOString(),
+        entity: metadata.entity || '',
+        category: metadata.category || topic || "general",
+        sessionId: metadata.sessionId || '',
+        timestamp: now,
+        createdAt: now,
+        updatedAt: now,
+        lastRetrieved: '',
+        retrievals: 0,
         uses: 1
       };
 
@@ -141,5 +156,20 @@ const StorageManager = {
     });
   }
 };
+
+function normalizeFact(fact) {
+  return String(fact || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+async function hashMemory(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 export default StorageManager;

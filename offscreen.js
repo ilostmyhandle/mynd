@@ -9,8 +9,10 @@ Do not store secrets, passwords, API keys, access tokens, medical details, finan
 Each fact must be a single sentence, specific, and useful without the original conversation.`;
 
 const JSON_INSTRUCTION = `Return strict JSON only - no other text:
-{"summary":"...","memories":[{"fact":"...","topic":"..."}]}
-Topic must be one of: project, preference, workflow, person, general.`;
+{"summary":"...","memories":[{"fact":"...","topic":"...","entity":"...","category":"..."}]}
+Topic must be one of: project, preference, workflow, person, general.
+Entity is the main normalized thing this memory is about, or "" if none.
+Category must be one of: project, tool, preference, workflow, constraint, person, general.`;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'cortex.offscreen.status') {
@@ -168,9 +170,21 @@ function parseMemories(raw) {
     memories: memories
       .map((m) => ({
         fact: String(m.fact || '').trim(),
-        topic: String(m.topic || 'general').trim().toLowerCase() || 'general'
+        topic: normalizeTopic(m.topic),
+        entity: String(m.entity || '').trim(),
+        category: normalizeCategory(m.category || m.topic)
       }))
       .filter((m) => m.fact.length > 0)
       .slice(0, 6)
   };
+}
+
+function normalizeTopic(topic) {
+  const value = String(topic || 'general').trim().toLowerCase();
+  return ['project', 'preference', 'workflow', 'person', 'general'].includes(value) ? value : 'general';
+}
+
+function normalizeCategory(category) {
+  const value = String(category || 'general').trim().toLowerCase();
+  return ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general'].includes(value) ? value : 'general';
 }
