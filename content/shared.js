@@ -218,7 +218,7 @@ async function showSuggestionsCard({ platform, getConversationText, getInput, se
     const inputEl = getInput();
     if (inputEl) {
       const current = getText(inputEl);
-      setInput(inputEl, prefix + current);
+      setInput(inputEl, mergeInjectionWithInput(prefix, current));
     } else {
       pendingInjectionPrefix = prefix;
     }
@@ -284,21 +284,66 @@ function buildCard(summary, memories) {
 }
 
 function buildInjectionText(summary, memories) {
-  if (!summary && !memories.length) return null;
+  const summaryText = String(summary || '').trim();
+  const facts = uniqueFacts(memories).slice(0, 4);
+  if (!summaryText && !facts.length) return null;
 
-  let text = '[Cortex]\n';
+  const brief = buildContextBrief(summaryText, facts);
+  if (!brief) return null;
+
+  return `[Cortex context]\n${brief}\n\nUse this only as background. Do not mention Cortex unless asked.\n[/Cortex context]\n\n`;
+}
+
+function buildContextBrief(summary, facts) {
+  const parts = [];
 
   if (summary) {
-    text += `Continuing from your last session: ${summary}\n`;
+    parts.push(summary.replace(/\s+/g, ' '));
   }
 
-  if (memories.length) {
-    text += '\nBackground:\n';
-    text += memories.map(m => `- ${m.fact}`).join('\n') + '\n';
+  if (facts.length) {
+    const factSentence = facts
+      .map((memory) => cleanSentence(memory.fact))
+      .filter(Boolean)
+      .join(' ');
+
+    if (factSentence) parts.push(factSentence);
   }
 
-  text += '[/Cortex]\n\n';
-  return text;
+  return parts.join(' ').trim();
+}
+
+function uniqueFacts(memories) {
+  const seen = new Set();
+  const result = [];
+
+  for (const memory of memories || []) {
+    const fact = cleanSentence(memory.fact);
+    const key = fact.toLowerCase();
+    if (!fact || seen.has(key)) continue;
+    seen.add(key);
+    result.push({ ...memory, fact });
+  }
+
+  return result;
+}
+
+function cleanSentence(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function mergeInjectionWithInput(prefix, current) {
+  const cleanedCurrent = stripCortexBlocks(current).trimStart();
+  return `${prefix}${cleanedCurrent}`;
+}
+
+function stripCortexBlocks(text) {
+  return String(text || '')
+    .replace(/\[Cortex context\][\s\S]*?\[\/Cortex context\]\s*/gi, '')
+    .replace(/\[Cortex\][\s\S]*?\[\/Cortex\]\s*/gi, '')
+    .replace(/\[Cortex memory\][\s\S]*?\[\/Cortex memory\]\s*/gi, '');
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +361,7 @@ export function setupInjector({ getInput, getSubmit, setInput }) {
         const inputEl = getInput();
         if (inputEl) {
           const current = getText(inputEl);
-          setInput(inputEl, prefix + current);
+          setInput(inputEl, mergeInjectionWithInput(prefix, current));
         } else {
           pendingInjectionPrefix = prefix;
         }
@@ -346,7 +391,7 @@ export function setupInjector({ getInput, getSubmit, setInput }) {
 
       e.stopImmediatePropagation();
       e.preventDefault();
-      setInput(inputEl, prefix + current);
+      setInput(inputEl, mergeInjectionWithInput(prefix, current));
       requestAnimationFrame(() => requestAnimationFrame(() => {
         const fresh = getSubmit();
         if (fresh) fresh.click();
