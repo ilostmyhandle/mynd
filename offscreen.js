@@ -43,14 +43,6 @@ async function getChromeAIStatus() {
 
   const availability = await getChromeAIAvailability(model);
 
-  if (availability === 'downloadable' || availability === 'downloading') {
-    return {
-      success: false,
-      available: availability,
-      error: 'Chrome Prompt AI model is not ready yet. Leave Chrome open and check chrome://on-device-internals.'
-    };
-  }
-
   if (availability === 'unavailable') {
     return {
       success: false,
@@ -59,9 +51,20 @@ async function getChromeAIStatus() {
     };
   }
 
+  const probe = await probeChromeAI(model);
+
+  if (!probe.success) {
+    return {
+      success: false,
+      available: availability,
+      error: `Chrome Prompt AI API is exposed but could not create a session. Availability: ${availability}. ${probe.error}`
+    };
+  }
+
   return {
     success: true,
-    available: availability || 'available'
+    available: availability || 'available',
+    probe: probe.output
   };
 }
 
@@ -95,10 +98,6 @@ async function assertChromeAIAvailable(model) {
 
   if (availability === 'unavailable') {
     throw new Error('Chrome Prompt AI is unavailable on this browser/device.');
-  }
-
-  if (availability === 'downloadable' || availability === 'downloading') {
-    throw new Error('Chrome Prompt AI model is not ready yet. Open chrome://on-device-internals and wait for the model to finish downloading.');
   }
 }
 
@@ -134,6 +133,27 @@ function createChromeAISession(model) {
   return model.create({
     systemPrompt: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}`
   });
+}
+
+async function probeChromeAI(model) {
+  let session;
+
+  try {
+    session = await createChromeAISession(model);
+    const output = await session.prompt('Reply with only: OK');
+    return { success: true, output: String(output || '').trim().slice(0, 40) };
+  } catch (error) {
+    return { success: false, error: getErrorMessage(error) };
+  } finally {
+    session?.destroy?.();
+  }
+}
+
+function getErrorMessage(error) {
+  if (!error) return 'Unknown error.';
+  if (typeof error === 'string') return error;
+  if (error.message) return error.message;
+  return JSON.stringify(error);
 }
 
 function parseMemories(raw) {

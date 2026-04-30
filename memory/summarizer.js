@@ -111,10 +111,6 @@ async function assertChromeAIAvailable(model) {
     if (availability === 'unavailable') {
       throw new Error('Chrome Prompt AI is unavailable on this browser/device.');
     }
-
-    if (availability === 'downloadable' || availability === 'downloading') {
-      throw new Error('Chrome Prompt AI model is not ready yet. Open chrome://on-device-internals and wait for the model to finish downloading.');
-    }
   }
 
   if (typeof model.capabilities === 'function') {

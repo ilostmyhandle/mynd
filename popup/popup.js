@@ -251,7 +251,7 @@ checkPromptAiButton.addEventListener('click', async () => {
     const result = await sendRuntimeMessage({ type: 'cortex.promptAiStatus' });
 
     if (result.success) {
-      showSettingsMessage(`Prompt AI is ${result.available}.`);
+      showSettingsMessage(`Prompt AI session works. Availability reported: ${result.available}.`);
     } else {
       showSettingsMessage(result.error || `Prompt AI status: ${result.available || 'unknown'}`);
     }
