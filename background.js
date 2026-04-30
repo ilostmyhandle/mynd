@@ -1,43 +1,111 @@
-// background.js
-// Coordinates between extension pages, content scripts, and storage.
+import Summarizer from './memory/summarizer.js';
+import StorageManager from './memory/storage.js';
+import SettingsManager from './memory/settings.js';
 
 const OAUTH_CALLBACK_PATH = 'auth';
 const OAUTH_RESPONSE_KEY = 'cortex.pendingOAuthResponseUrl';
 const DEV_OAUTH_CALLBACK_ORIGIN = 'http://localhost:3000';
 
+// ---------------------------------------------------------------------------
+// MEMORY EXTRACTION
+// Content scripts send conversation text here. Chrome AI is routed through
+// an offscreen document (the only renderer context available to service
+// workers). All other providers use fetch directly.
+// ---------------------------------------------------------------------------
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'cortex.extractMemories') {
+    handleExtraction(message.platform, message.text)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+});
+
+async function handleExtraction(platform, text) {
+  const settings = await SettingsManager.getSettings();
+  let memories;
+
+  if (settings.provider === 'chrome-ai') {
+    memories = await extractViaOffscreen(text);
+  } else {
+    memories = await Summarizer.extractMemories(text);
+  }
+
+  let saved = 0;
+  for (const m of memories) {
+    const result = await StorageManager.saveMemory(m.fact, platform, m.topic);
+    if (result.success) saved++;
+  }
+  return { success: true, extracted: memories.length, saved };
+}
+
+// ---------------------------------------------------------------------------
+// OFFSCREEN - used only for Chrome built-in AI (needs renderer context)
+// ---------------------------------------------------------------------------
+async function extractViaOffscreen(text) {
+  await ensureOffscreen();
+
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      { type: 'cortex.offscreen.extract', text },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          return reject(new Error(chrome.runtime.lastError.message));
+        }
+        if (response?.success) resolve(response.memories);
+        else reject(new Error(response?.error || 'Offscreen extraction failed.'));
+      }
+    );
+  });
+}
+
+async function ensureOffscreen() {
+  try {
+    const existing = await chrome.offscreen.hasDocument();
+    if (!existing) await createOffscreen();
+  } catch {
+    await createOffscreen();
+  }
+}
+
+function createOffscreen() {
+  return chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: ['DOM_SCRAPING'],
+    justification: 'Access window.ai for Chrome built-in AI memory extraction'
+  });
+}
+
+// ---------------------------------------------------------------------------
+// OAUTH
+// ---------------------------------------------------------------------------
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   if (!changeInfo.url) return;
-
   if (!isOAuthCallbackUrl(changeInfo.url)) return;
 
-  await chrome.storage.local.set({
-    [OAUTH_RESPONSE_KEY]: changeInfo.url
-  });
+  await chrome.storage.local.set({ [OAUTH_RESPONSE_KEY]: changeInfo.url });
 
   chrome.runtime.sendMessage({
     type: 'cortex.oauthCallback',
     url: changeInfo.url
-  }).catch(() => {
-    // The popup may be closed by the time Google redirects back.
-  });
+  }).catch(() => {});
 
   chrome.tabs.remove(tabId).catch(() => {});
 });
 
 function isOAuthCallbackUrl(url) {
   const extensionRedirectUrl = chrome.identity.getRedirectURL(OAUTH_CALLBACK_PATH);
-
   if (url.startsWith(extensionRedirectUrl)) return true;
-
   try {
-    const parsedUrl = new URL(url);
-
-    return parsedUrl.origin === DEV_OAUTH_CALLBACK_ORIGIN &&
-      (parsedUrl.searchParams.has('code') ||
-        parsedUrl.searchParams.has('error') ||
-        parsedUrl.hash.includes('access_token') ||
-        parsedUrl.hash.includes('error'));
-  } catch (error) {
+    const parsed = new URL(url);
+    return (
+      parsed.origin === DEV_OAUTH_CALLBACK_ORIGIN &&
+      (parsed.searchParams.has('code') ||
+        parsed.searchParams.has('error') ||
+        parsed.hash.includes('access_token') ||
+        parsed.hash.includes('error'))
+    );
+  } catch {
     return false;
   }
 }

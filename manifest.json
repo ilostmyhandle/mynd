@@ -8,15 +8,18 @@
     "scripting",
     "activeTab",
     "identity",
-    "tabs"
+    "tabs",
+    "offscreen"
   ],
   "host_permissions": [
+    "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://claude.ai/*",
     "https://gemini.google.com/*",
     "https://*.supabase.co/*",
     "https://api.openai.com/*",
     "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
     "http://localhost:3000/*"
   ],
   "background": {
@@ -28,7 +31,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chat.openai.com/*"],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "js": ["chatgpt.js"]
     },
     {

@@ -7,6 +7,7 @@ module.exports = {
   entry: {
     popup: './popup/popup.js',
     background: './background.js',
+    offscreen: './offscreen.js',
     chatgpt: './content/chatgpt.js',
     claude: './content/claude.js',
     gemini: './content/gemini.js'
@@ -36,7 +37,8 @@ module.exports = {
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
         { from: 'popup/popup.html', to: 'popup.html' },
-        { from: 'popup/popup.css', to: 'popup.css' }
+        { from: 'popup/popup.css', to: 'popup.css' },
+        { from: 'offscreen.html', to: 'offscreen.html' }
       ]
     })
   ]

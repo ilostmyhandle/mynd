@@ -18,6 +18,7 @@ const memoryList = document.getElementById('memory-list');
 const providerSelect = document.getElementById('provider-select');
 const apiKeyInput = document.getElementById('api-key-input');
 const modelInput = document.getElementById('model-input');
+const apiKeyWrap = document.getElementById('api-key-wrap');
 const saveSettingsButton = document.getElementById('save-settings-btn');
 const settingsMessage = document.getElementById('settings-message');
 const conversationInput = document.getElementById('conversation-input');
@@ -230,8 +231,15 @@ saveMemoryButton.addEventListener('click', async () => {
 // AI SETTINGS
 // ---------------------------------------------------------------------------
 providerSelect.addEventListener('change', () => {
-  modelInput.value = SettingsManager.getDefaultModel(providerSelect.value);
+  const provider = providerSelect.value;
+  modelInput.value = SettingsManager.getDefaultModel(provider);
+  toggleApiKeyFields(provider);
 });
+
+function toggleApiKeyFields(provider) {
+  const needsKey = provider !== 'chrome-ai';
+  apiKeyWrap.style.display = needsKey ? '' : 'none';
+}
 
 saveSettingsButton.addEventListener('click', async () => {
   saveSettingsButton.disabled = true;
@@ -269,6 +277,19 @@ extractMemoryButton.addEventListener('click', async () => {
   showSummarizerMessage('Extracting memories...');
 
   try {
+    const settings = await SettingsManager.getSettings();
+
+    if (settings.provider === 'chrome-ai') {
+      const result = await extractMemoriesInBackground('summarizer', conversationText);
+
+      if (!result.success) throw new Error(result.error || 'Prompt AI extraction failed.');
+
+      conversationInput.value = '';
+      await refreshDashboard();
+      showSummarizerMessage(`Extracted ${result.extracted || 0}, saved ${result.saved || 0}.`);
+      return;
+    }
+
     const memories = await Summarizer.extractMemories(conversationText);
 
     if (!memories.length) {
@@ -341,6 +362,22 @@ function setButtonsDisabled(disabled) {
 
 function getOAuthRedirectUrl() {
   return chrome.identity.getRedirectURL('auth');
+}
+
+function extractMemoriesInBackground(platform, text) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      { type: 'cortex.extractMemories', platform, text },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+
+        resolve(response);
+      }
+    );
+  });
 }
 
 async function completeOAuth(responseUrl) {
@@ -422,6 +459,7 @@ async function renderSettings() {
   providerSelect.value = settings.provider;
   apiKeyInput.value = settings.apiKey;
   modelInput.value = settings.model;
+  toggleApiKeyFields(settings.provider);
 }
 
 function escapeHtml(value) {
@@ -439,6 +477,14 @@ chrome.runtime.onMessage.addListener((message) => {
   completeOAuth(message.url).catch((error) => {
     showMessage(getErrorMessage(error));
   });
+});
+
+// Refresh the counter and memory list whenever the background saves new memories
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.memories) return;
+  if (!dashboardScreen.classList.contains('hidden')) {
+    refreshDashboard();
+  }
 });
 
 function getErrorMessage(error) {
