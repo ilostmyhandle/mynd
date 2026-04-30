@@ -59,6 +59,7 @@ const StorageManager = {
           topic: topic || memories[targetIndex].topic || 'general',
           entity: metadata.entity || memories[targetIndex].entity || '',
           category: metadata.category || memories[targetIndex].category || topic || 'general',
+          kind: metadata.kind || memories[targetIndex].kind || inferKind(topic, metadata.category),
           sessionId: metadata.sessionId || memories[targetIndex].sessionId || '',
           timestamp: now,
           updatedAt: now,
@@ -82,6 +83,7 @@ const StorageManager = {
       memories[existingIndex].hash = memories[existingIndex].hash || hash;
       memories[existingIndex].entity = memories[existingIndex].entity || metadata.entity || '';
       memories[existingIndex].category = memories[existingIndex].category || metadata.category || topic || 'general';
+      memories[existingIndex].kind = memories[existingIndex].kind || metadata.kind || inferKind(topic, metadata.category);
     } else {
       if (activeCount(memories) >= MEMORY_LIMIT) {
         return { success: false, reason: "limit_reached" };
@@ -95,6 +97,7 @@ const StorageManager = {
         topic: topic || "general",
         entity: metadata.entity || '',
         category: metadata.category || topic || "general",
+        kind: metadata.kind || inferKind(topic, metadata.category),
         sessionId: metadata.sessionId || '',
         timestamp: now,
         createdAt: now,
@@ -229,6 +232,13 @@ function findMemoryIndex(memories, { normalizedFact, hash, target, metadata }) {
 function normalizeAction(action) {
   const value = String(action || 'add').trim().toLowerCase();
   return ['add', 'update', 'delete'].includes(value) ? value : 'add';
+}
+
+function inferKind(topic, category) {
+  const value = String(category || topic || 'personal').trim().toLowerCase();
+  if (['domain', 'correction', 'rule'].includes(value)) return value;
+  if (['project', 'tool', 'workflow', 'constraint'].includes(value)) return 'project';
+  return 'personal';
 }
 
 function activeCount(memories) {

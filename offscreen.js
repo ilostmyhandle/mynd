@@ -9,10 +9,11 @@ Do not store secrets, passwords, API keys, access tokens, medical details, finan
 Each fact must be a single sentence, specific, and useful without the original conversation.`;
 
 const JSON_INSTRUCTION = `Return strict JSON only - no other text:
-{"summary":"...","memories":[{"fact":"...","topic":"...","entity":"...","category":"...","action":"add","target":""}]}
+{"summary":"...","memories":[{"fact":"...","topic":"...","entity":"...","category":"...","kind":"project","action":"add","target":""}]}
 Topic must be one of: project, preference, workflow, person, general.
 Entity is the main normalized thing this memory is about, or "" if none.
 Category must be one of: project, tool, preference, workflow, constraint, person, general.
+Kind must be one of: personal, project, domain, correction, rule. Use domain/correction/rule for reusable knowledge that would prevent re-explaining a concept.
 Action must be add, update, or delete. Only use update/delete when the user explicitly replaces or retracts a durable fact.
 Target is the old fact or entity being replaced/retired, or "" for add.`;
 
@@ -175,6 +176,7 @@ function parseMemories(raw) {
         topic: normalizeTopic(m.topic),
         entity: String(m.entity || '').trim(),
         category: normalizeCategory(m.category || m.topic),
+        kind: normalizeKind(m.kind || m.category || m.topic),
         action: normalizeAction(m.action),
         target: String(m.target || '').trim()
       }))
@@ -196,4 +198,9 @@ function normalizeCategory(category) {
 function normalizeAction(action) {
   const value = String(action || 'add').trim().toLowerCase();
   return ['add', 'update', 'delete'].includes(value) ? value : 'add';
+}
+
+function normalizeKind(kind) {
+  const value = String(kind || 'personal').trim().toLowerCase();
+  return ['personal', 'project', 'domain', 'correction', 'rule'].includes(value) ? value : 'personal';
 }

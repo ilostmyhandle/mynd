@@ -49,6 +49,7 @@ async function handleExtraction(platform, text, sessionId = '') {
     const r = await StorageManager.saveMemory(m.fact, platform, m.topic, {
       entity: m.entity,
       category: m.category,
+      kind: m.kind,
       sessionId: m.sessionId || sessionId,
       action: m.action,
       target: m.target

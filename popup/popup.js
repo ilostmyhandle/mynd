@@ -321,6 +321,7 @@ extractMemoryButton.addEventListener('click', async () => {
       const result = await StorageManager.saveMemory(memory.fact, 'summarizer', memory.topic, {
         entity: memory.entity,
         category: memory.category,
+        kind: memory.kind,
         sessionId: memory.sessionId,
         action: memory.action,
         target: memory.target
@@ -480,7 +481,7 @@ async function renderMemoryList() {
       <input type="checkbox" class="memory-checkbox" data-index="${i}" style="flex-shrink:0;accent-color:#7c6af7;cursor:pointer;" />
       <div style="flex:1;min-width:0;">
         <div class="memory-fact">${escapeHtml(memory.fact)}</div>
-        <div class="memory-meta">${escapeHtml(memory.entity || memory.category || memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
+        <div class="memory-meta">${escapeHtml(memory.kind || memory.entity || memory.category || memory.topic)} &middot; ${escapeHtml(memory.entity || memory.category || memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
       </div>
     </label>
   `).join('');

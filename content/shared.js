@@ -367,13 +367,25 @@ function buildContextBrief(summary, facts) {
     parts.push(summary.replace(/\s+/g, ' '));
   }
 
-  if (facts.length) {
-    const factSentence = facts
+  const domainFacts = facts.filter(isDomainMemory).slice(0, 4);
+  const workingFacts = facts.filter((memory) => !isDomainMemory(memory)).slice(0, 4);
+
+  if (domainFacts.length) {
+    const domainText = domainFacts
       .map((memory) => cleanSentence(memory.fact))
       .filter(Boolean)
       .join(' ');
 
-    if (factSentence) parts.push(factSentence);
+    if (domainText) parts.push(`Relevant domain notes: ${domainText}`);
+  }
+
+  if (workingFacts.length) {
+    const workingText = workingFacts
+      .map((memory) => cleanSentence(memory.fact))
+      .filter(Boolean)
+      .join(' ');
+
+    if (workingText) parts.push(`Working context: ${workingText}`);
   }
 
   return parts.join(' ').trim();
@@ -479,11 +491,12 @@ function findRelevant(memories, context) {
         .length;
       const entityScore = m.entity && lower.includes(String(m.entity).toLowerCase()) ? 4 : 0;
       const categoryScore = m.category && lower.includes(String(m.category).toLowerCase()) ? 2 : 0;
+      const kindScore = isDomainMemory(m) ? 2.5 : 0;
       const useScore = Math.min(Number(m.uses || 0), 5) * 0.4;
       const retrievalScore = Math.min(Number(m.retrievals || 0), 5) * 0.3;
       const agePenalty = Math.max(0, Date.now() - Date.parse(m.timestamp || m.createdAt || 0)) / 86400000 * 0.01;
 
-      return factScore + entityScore + categoryScore + useScore + retrievalScore - agePenalty;
+      return factScore + entityScore + categoryScore + kindScore + useScore + retrievalScore - agePenalty;
     };
     return score(b) - score(a);
   });
@@ -494,7 +507,14 @@ function createSessionId(platform) {
 }
 
 function getMemoryGroup(memory) {
+  if (memory.kind === 'domain') return `domain: ${memory.entity || memory.category || memory.topic || 'general'}`;
+  if (memory.kind === 'correction') return `correction: ${memory.entity || memory.category || memory.topic || 'general'}`;
+  if (memory.kind === 'rule') return `rule: ${memory.entity || memory.category || memory.topic || 'general'}`;
   return memory.entity || memory.category || memory.topic || 'general';
+}
+
+function isDomainMemory(memory) {
+  return ['domain', 'correction', 'rule'].includes(String(memory.kind || '').toLowerCase());
 }
 
 async function markMemoriesRetrieved(selectedMemories) {
