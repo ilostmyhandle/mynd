@@ -1,3 +1,5 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.1';
+
 const corsHeaders = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
@@ -80,8 +82,14 @@ Deno.serve(async (request) => {
       return json({ error: 'Extraction service is not configured.' }, 500);
     }
 
-    const authHeader = request.headers.get('authorization') || '';
-    if (!authHeader.toLowerCase().startsWith('bearer ')) {
+    const token = getBearerToken(request);
+    if (!token) return json({ error: 'Authentication required.' }, 401);
+
+    const supabase = getSupabaseAdmin();
+    const { data: userResult, error: userError } = await supabase.auth.getUser(token);
+    const user = userResult?.user;
+
+    if (userError || !user?.id) {
       return json({ error: 'Authentication required.' }, 401);
     }
 
@@ -90,6 +98,19 @@ Deno.serve(async (request) => {
 
     if (!text) {
       return json({ error: 'No conversation text provided.' }, 400);
+    }
+
+    const usage = await consumeDailyExtraction(supabase, user.id);
+    if (!usage.allowed) {
+      return json(
+        {
+          error: `Daily extraction limit reached. Free accounts get ${usage.dailyLimit} extractions per day.`,
+          used: usage.used,
+          limit: usage.dailyLimit,
+          resetAt: usage.resetAt
+        },
+        429
+      );
     }
 
     const limitedText = text.slice(-12000);
@@ -139,6 +160,45 @@ Deno.serve(async (request) => {
     return json({ error: getErrorMessage(error) }, 500);
   }
 });
+
+function getBearerToken(request: Request) {
+  const authHeader = request.headers.get('authorization') || '';
+  const match = authHeader.match(/^bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || '';
+}
+
+function getSupabaseAdmin() {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Supabase admin credentials are not configured.');
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+}
+
+async function consumeDailyExtraction(supabase: any, userId: string) {
+  const { data, error } = await supabase
+    .rpc('consume_daily_extraction', {
+      p_user_id: userId
+    })
+    .single();
+
+  if (error) throw error;
+
+  return {
+    allowed: Boolean(data?.allowed),
+    used: Number(data?.used || 0),
+    dailyLimit: Number(data?.daily_limit || 10),
+    resetAt: String(data?.reset_at || '')
+  };
+}
 
 function extractOutputText(payload: any) {
   return payload?.output

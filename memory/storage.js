@@ -6,7 +6,15 @@
 
 import { supabase } from '../utils/supabase.js';
 
-const MEMORY_LIMIT = 200;
+const FREE_MEMORY_LIMIT = 200;
+const DEFAULT_ENTITLEMENTS = {
+  plan: 'free',
+  memoryLimit: FREE_MEMORY_LIMIT,
+  dailyExtractionLimit: 10,
+  isPaid: false,
+  memoryCount: 0
+};
+const ENTITLEMENTS_CACHE_KEY = 'cortex.entitlements';
 
 const StorageManager = {
 
@@ -85,7 +93,8 @@ const StorageManager = {
       memories[existingIndex].category = memories[existingIndex].category || metadata.category || topic || 'general';
       memories[existingIndex].kind = memories[existingIndex].kind || metadata.kind || inferKind(topic, metadata.category);
     } else {
-      if (activeCount(memories) >= MEMORY_LIMIT) {
+      const memoryLimit = await StorageManager.getMemoryLimit();
+      if (activeCount(memories) >= memoryLimit) {
         return { success: false, reason: "limit_reached" };
       }
 
@@ -147,6 +156,40 @@ const StorageManager = {
     }
   },
 
+  getEntitlements: async () => {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) throw sessionError;
+      if (!session?.user?.id) return DEFAULT_ENTITLEMENTS;
+
+      const { data, error } = await supabase.rpc('get_my_entitlements');
+      if (error) throw error;
+
+      const row = Array.isArray(data) ? data[0] : data;
+      const entitlements = normalizeEntitlements(row);
+
+      await chrome.storage.local.set({ [ENTITLEMENTS_CACHE_KEY]: entitlements });
+      return entitlements;
+    } catch (error) {
+      console.warn("Cortex: Entitlement lookup failed.", error);
+      return StorageManager.getCachedEntitlements();
+    }
+  },
+
+  getCachedEntitlements: async () => {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([ENTITLEMENTS_CACHE_KEY], (result) => {
+        resolve(normalizeEntitlements(result[ENTITLEMENTS_CACHE_KEY]));
+      });
+    });
+  },
+
+  getMemoryLimit: async () => {
+    const entitlements = await StorageManager.getEntitlements();
+    return entitlements.memoryLimit;
+  },
+
   findRelevantMemories: async (contextText) => {
     const memories = await StorageManager.getMemories();
 
@@ -176,14 +219,19 @@ const StorageManager = {
 
   getStats: async () => {
     const memories = await StorageManager.getMemories();
+    const entitlements = await StorageManager.getEntitlements();
     const total = memories.length;
+    const limit = entitlements.memoryLimit;
+    const remaining = Math.max(limit - total, 0);
 
     return {
       total,
-      limit: MEMORY_LIMIT,
-      remaining: MEMORY_LIMIT - total,
-      percentage: Math.round((total / MEMORY_LIMIT) * 100),
-      limitReached: total >= MEMORY_LIMIT
+      limit,
+      remaining,
+      percentage: Math.min(100, Math.round((total / limit) * 100)),
+      limitReached: total >= limit,
+      plan: entitlements.plan,
+      isPaid: entitlements.isPaid
     };
   },
 
@@ -213,6 +261,24 @@ function persistMemories(memories, result) {
       });
     });
   });
+}
+
+function normalizeEntitlements(raw = {}) {
+  const memoryLimit = Number(raw.memory_limit ?? raw.memoryLimit ?? DEFAULT_ENTITLEMENTS.memoryLimit);
+  const dailyExtractionLimit = Number(
+    raw.daily_extraction_limit ?? raw.dailyExtractionLimit ?? DEFAULT_ENTITLEMENTS.dailyExtractionLimit
+  );
+  const plan = String(raw.plan || DEFAULT_ENTITLEMENTS.plan).trim().toLowerCase();
+
+  return {
+    plan,
+    memoryLimit: Number.isFinite(memoryLimit) && memoryLimit > 0 ? memoryLimit : DEFAULT_ENTITLEMENTS.memoryLimit,
+    dailyExtractionLimit: Number.isFinite(dailyExtractionLimit) && dailyExtractionLimit > 0 ?
+      dailyExtractionLimit :
+      DEFAULT_ENTITLEMENTS.dailyExtractionLimit,
+    isPaid: Boolean(raw.is_paid ?? raw.isPaid ?? plan !== 'free'),
+    memoryCount: Number(raw.memory_count ?? raw.memoryCount ?? DEFAULT_ENTITLEMENTS.memoryCount)
+  };
 }
 
 function findMemoryIndex(memories, { normalizedFact, hash, target, metadata }) {
