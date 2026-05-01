@@ -67,16 +67,16 @@ function sendToBackground(platform, text) {
 
   try {
     chrome.runtime.sendMessage(
-      { type: 'cortex.extractMemories', platform, text, sessionId: state.sessionId },
+      { type: 'mynd.extractMemories', platform, text, sessionId: state.sessionId },
       (response) => {
         if (chrome.runtime?.lastError) return;
         if (response?.saved > 0) {
-          console.log(`Cortex: +${response.saved} memor${response.saved === 1 ? 'y' : 'ies'} from ${platform}`);
+          console.log(`mynd: +${response.saved} memor${response.saved === 1 ? 'y' : 'ies'} from ${platform}`);
         } else if (response?.error) {
           if (isPromptAiReadinessError(response.error)) {
             extractionPausedUntil = Date.now() + PROMPT_AI_RETRY_DELAY;
           }
-          console.warn('Cortex:', response.error);
+          console.warn('mynd:', response.error);
         }
       }
     );
@@ -181,22 +181,22 @@ function shouldPromptCapture(state, previousUrl, unsaved) {
 }
 
 function showCaptureCard({ platform, text, unsaved, onDone }) {
-  if (document.getElementById('cortex-capture-card')) {
+  if (document.getElementById('mynd-capture-card')) {
     onDone();
     return;
   }
 
-  const card = buildShellCard('cortex-capture-card');
+  const card = buildShellCard('mynd-capture-card');
   card.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#fff;">Cortex</span>
-      <button id="cortex-capture-dismiss" style="background:none;border:none;color:#555;cursor:pointer;font-size:18px;line-height:1;padding:0;" title="Dismiss">x</button>
+      <span style="font-size:13px;font-weight:700;letter-spacing:0.04em;font-variant:small-caps;color:#fff;">mynd</span>
+      <button id="mynd-capture-dismiss" style="background:none;border:none;color:rgba(238,240,248,0.3);cursor:pointer;font-size:17px;line-height:1;padding:2px;" title="Dismiss">x</button>
     </div>
-    <p style="margin:0 0 8px;font-size:13px;color:#f0f0f0;line-height:1.45;">Capture the conversation you just left?</p>
-    <p style="margin:0 0 12px;font-size:12px;color:#888;line-height:1.45;">Cortex found about ${Math.round(unsaved.length / 100) * 100} new characters that have not been turned into context yet.</p>
+    <p style="margin:0 0 6px;font-size:13px;color:rgba(238,240,248,0.9);line-height:1.45;">Capture the conversation you just left?</p>
+    <p style="margin:0 0 12px;font-size:12px;color:rgba(238,240,248,0.4);line-height:1.45;">Found ~${Math.round(unsaved.length / 100) * 100} characters not yet captured.</p>
     <div style="display:flex;gap:8px;">
-      <button id="cortex-capture-yes" style="flex:1;background:#ffffff;color:#0a0a0a;border:none;border-radius:7px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">Capture</button>
-      <button id="cortex-capture-no" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#888;border-radius:7px;padding:8px 12px;cursor:pointer;font-size:12px;">Skip</button>
+      <button id="mynd-capture-yes" style="flex:1;background:#fff;color:#06080f;border:1px solid rgba(255,255,255,0.9);border-radius:9px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;box-shadow:0 4px 16px rgba(160,190,255,0.18);">Capture</button>
+      <button id="mynd-capture-no" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:rgba(238,240,248,0.5);border-radius:9px;padding:8px 12px;cursor:pointer;font-size:12px;">Skip</button>
     </div>
   `;
 
@@ -216,9 +216,9 @@ function showCaptureCard({ platform, text, unsaved, onDone }) {
     onDone();
   }
 
-  card.querySelector('#cortex-capture-dismiss').addEventListener('click', () => finish(false));
-  card.querySelector('#cortex-capture-no').addEventListener('click', () => finish(false));
-  card.querySelector('#cortex-capture-yes').addEventListener('click', () => finish(true));
+  card.querySelector('#mynd-capture-dismiss').addEventListener('click', () => finish(false));
+  card.querySelector('#mynd-capture-no').addEventListener('click', () => finish(false));
+  card.querySelector('#mynd-capture-yes').addEventListener('click', () => finish(true));
 }
 
 // ---------------------------------------------------------------------------
@@ -228,15 +228,17 @@ function showCaptureCard({ platform, text, unsaved, onDone }) {
 // ---------------------------------------------------------------------------
 async function showSuggestionsCard({ platform, getConversationText, getInput, setInput }) {
   // Don't replace a card that's already open
-  if (document.getElementById('cortex-card')) return;
+  if (document.getElementById('mynd-card')) return;
 
   // Re-check because conversation content sometimes loads after the URL change.
   if (!isEmptyConversation(getConversationText)) return;
 
-  const storageKeys = ['memories', `cortex.lastSummary.${platform}`];
+  const summaryKey = `mynd.lastSummary.${platform}`;
+  const legacySummaryKey = `cortex.lastSummary.${platform}`;
+  const storageKeys = ['memories', summaryKey, legacySummaryKey];
   const stored = await chrome.storage.local.get(storageKeys);
   const memories = stored.memories || [];
-  const lastSummary = stored[`cortex.lastSummary.${platform}`] || '';
+  const lastSummary = stored[summaryKey] || stored[legacySummaryKey] || '';
 
   if (!memories.length && !lastSummary) return;
 
@@ -253,18 +255,18 @@ async function showSuggestionsCard({ platform, getConversationText, getInput, se
     card.remove();
   }
 
-  card.querySelector('#cortex-card-dismiss').addEventListener('click', dismiss);
-  card.querySelector('#cortex-card-skip').addEventListener('click', dismiss);
+  card.querySelector('#mynd-card-dismiss').addEventListener('click', dismiss);
+  card.querySelector('#mynd-card-skip').addEventListener('click', dismiss);
 
-  card.querySelectorAll('.cortex-chip').forEach(label => {
+  card.querySelectorAll('.mynd-chip').forEach(label => {
     const cb = label.querySelector('input');
     cb.addEventListener('change', () => {
-      label.style.background = cb.checked ? '#2a2a2a' : '#1a1a1a';
-      label.style.borderColor = cb.checked ? '#555' : '#2a2a2a';
+      label.style.background = cb.checked ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)';
+      label.style.borderColor = cb.checked ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.09)';
     });
   });
 
-  card.querySelector('#cortex-card-apply').addEventListener('click', () => {
+  card.querySelector('#mynd-card-apply').addEventListener('click', () => {
     const selectedMemories = [...card.querySelectorAll('input[type="checkbox"]:checked')]
       .map(cb => top[parseInt(cb.dataset.index)])
       .filter(Boolean);
@@ -286,40 +288,40 @@ async function showSuggestionsCard({ platform, getConversationText, getInput, se
 }
 
 function buildCard(summary, memories) {
-  const card = buildShellCard('cortex-card');
+  const card = buildShellCard('mynd-card');
 
   const summaryHtml = summary ? `
-    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;padding:10px;margin-bottom:10px;">
-      <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#888;margin-bottom:5px;">Last session</div>
-      <p style="margin:0;font-size:12px;color:#e8e8e8;line-height:1.5;">${escapeHtml(summary)}</p>
+    <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:rgba(238,240,248,0.35);margin-bottom:5px;">Last session</div>
+      <p style="margin:0;font-size:12px;color:rgba(238,240,248,0.85);line-height:1.5;">${escapeHtml(summary)}</p>
     </div>
   ` : '';
 
   const memoriesHtml = memories.length ? `
-    <p style="margin:0 0 6px;font-size:11px;color:#555;text-transform:uppercase;letter-spacing:0.05em;">Also include</p>
-    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
+    <p style="margin:0 0 6px;font-size:10px;font-weight:600;color:rgba(238,240,248,0.3);text-transform:uppercase;letter-spacing:0.07em;">Also include</p>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">
       ${memories.map((m, i) => `
-        <label class="cortex-chip" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:6px 8px;border-radius:6px;border:1px solid #2a2a2a;background:#1a1a1a;transition:all 0.15s;">
-          <input type="checkbox" data-index="${i}" style="margin-top:2px;flex-shrink:0;cursor:pointer;accent-color:#ffffff;" />
-          <span style="line-height:1.4;color:#e8e8e8;font-size:12px;">
-            <span style="display:block;color:#888;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">${escapeHtml(getMemoryGroup(m))}</span>
+        <label class="mynd-chip" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.04);transition:border-color 0.15s,background 0.15s;">
+          <input type="checkbox" data-index="${i}" style="margin-top:2px;flex-shrink:0;cursor:pointer;accent-color:#fff;width:13px;height:13px;" />
+          <span style="line-height:1.42;color:rgba(238,240,248,0.82);font-size:12px;">
+            <span style="display:block;color:rgba(238,240,248,0.3);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">${escapeHtml(getMemoryGroup(m))}</span>
             ${escapeHtml(m.fact)}
           </span>
         </label>
       `).join('')}
     </div>
-  ` : '<div style="margin-bottom:12px;"></div>';
+  ` : '<div style="margin-bottom:10px;"></div>';
 
   card.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#fff;">Cortex</span>
-      <button id="cortex-card-dismiss" style="background:none;border:none;color:#555;cursor:pointer;font-size:18px;line-height:1;padding:0;" title="Dismiss">x</button>
+      <span style="font-size:13px;font-weight:700;letter-spacing:0.04em;font-variant:small-caps;color:#fff;">mynd</span>
+      <button id="mynd-card-dismiss" style="background:none;border:none;color:rgba(238,240,248,0.3);cursor:pointer;font-size:17px;line-height:1;padding:2px;" title="Dismiss">x</button>
     </div>
     ${summaryHtml}
     ${memoriesHtml}
     <div style="display:flex;gap:8px;">
-      <button id="cortex-card-apply" style="flex:1;background:#ffffff;color:#0a0a0a;border:none;border-radius:7px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">${summary ? 'Continue session' : 'Inject selected'}</button>
-      <button id="cortex-card-skip" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#888;border-radius:7px;padding:8px 12px;cursor:pointer;font-size:12px;">Skip</button>
+      <button id="mynd-card-apply" style="flex:1;background:#fff;color:#06080f;border:1px solid rgba(255,255,255,0.9);border-radius:9px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;box-shadow:0 4px 16px rgba(160,190,255,0.18);">${summary ? 'Continue session' : 'Inject selected'}</button>
+      <button id="mynd-card-skip" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:rgba(238,240,248,0.5);border-radius:9px;padding:8px 12px;cursor:pointer;font-size:12px;">Skip</button>
     </div>
   `;
 
@@ -334,15 +336,17 @@ function buildShellCard(id) {
     'bottom:88px',
     'right:20px',
     'z-index:2147483647',
-    'width:308px',
-    'background:#0a0a0a',
-    'border:1px solid #2a2a2a',
-    'border-radius:10px',
+    'width:316px',
+    'background:rgba(6,8,15,0.82)',
+    'border:1px solid rgba(255,255,255,0.1)',
+    'border-radius:16px',
     'padding:14px 16px',
-    'box-shadow:0 8px 32px rgba(0,0,0,0.6)',
+    'box-shadow:inset 0 1px 0 rgba(255,255,255,0.1),0 16px 48px rgba(0,0,0,0.7)',
+    'backdrop-filter:blur(24px) saturate(1.5)',
+    '-webkit-backdrop-filter:blur(24px) saturate(1.5)',
     'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
     'font-size:13px',
-    'color:#f0f0f0',
+    'color:#eef0f8',
     'box-sizing:border-box',
   ].join(';');
 
@@ -357,7 +361,7 @@ function buildInjectionText(summary, memories) {
   const brief = buildContextBrief(summaryText, facts);
   if (!brief) return null;
 
-  return `[Cortex context]\n${brief}\n\nUse this only as background. Do not mention Cortex unless asked.\n[/Cortex context]\n\n`;
+  return `[mynd context]\n${brief}\n\n// directive: use silently as background, do not reference mynd unless asked\n[/mynd context]\n\n`;
 }
 
 function buildContextBrief(summary, facts) {
@@ -413,12 +417,15 @@ function cleanSentence(value) {
 }
 
 function mergeInjectionWithInput(prefix, current) {
-  const cleanedCurrent = stripCortexBlocks(current).trimStart();
+  const cleanedCurrent = stripmyndBlocks(current).trimStart();
   return `${prefix}${cleanedCurrent}`;
 }
 
-function stripCortexBlocks(text) {
+function stripmyndBlocks(text) {
   return String(text || '')
+    .replace(/\[mynd context\][\s\S]*?\[\/mynd context\]\s*/gi, '')
+    .replace(/\[mynd\][\s\S]*?\[\/mynd\]\s*/gi, '')
+    .replace(/\[mynd memory\][\s\S]*?\[\/mynd memory\]\s*/gi, '')
     .replace(/\[Cortex context\][\s\S]*?\[\/Cortex context\]\s*/gi, '')
     .replace(/\[Cortex\][\s\S]*?\[\/Cortex\]\s*/gi, '')
     .replace(/\[Cortex memory\][\s\S]*?\[\/Cortex memory\]\s*/gi, '');
@@ -432,7 +439,7 @@ function stripCortexBlocks(text) {
 export function setupInjector({ getInput, getSubmit, setInput }) {
   if (chrome?.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((message) => {
-      if (message?.type === 'cortex.queueInjection' && message.memories?.length) {
+      if (message?.type === 'mynd.queueInjection' && message.memories?.length) {
         const prefix = buildInjectionText('', message.memories);
         if (!prefix) return;
 

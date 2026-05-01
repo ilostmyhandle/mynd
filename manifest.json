@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Cortex",
+  "name": "mynd",
   "version": "1.0.0",
   "description": "Your memory across every AI.",
   "permissions": [
@@ -27,7 +27,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Cortex"
+    "default_title": "mynd"
   },
   "content_scripts": [
     {

@@ -15,7 +15,7 @@ MEMORIES: Up to 6 durable facts about the user worth keeping long-term: projects
 For each memory, include:
 - fact: the durable fact as one sentence.
 - topic: one of project, preference, workflow, person, general.
-- entity: the main normalized thing this memory is about, such as "Cortex", "Supabase", "OpenAI", "Claude", "sushi", or "" if none.
+- entity: the main normalized thing this memory is about, such as "mynd", "Supabase", "OpenAI", "Claude", "sushi", or "" if none.
 - category: a broader grouping such as project, tool, preference, workflow, constraint, person, or general.
 - kind: personal, project, domain, correction, or rule.
   - personal: durable facts about the user.
@@ -132,7 +132,7 @@ Deno.serve(async (request) => {
         text: {
           format: {
             type: 'json_schema',
-            name: 'cortex_extraction',
+            name: 'mynd_extraction',
             strict: true,
             schema: MEMORY_SCHEMA
           }

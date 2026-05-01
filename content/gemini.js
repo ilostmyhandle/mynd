@@ -7,7 +7,7 @@ import {
   querySelector
 } from './shared.js';
 
-console.log('Cortex: Gemini script loaded.');
+console.log('mynd: Gemini script loaded.');
 
 function getConversationText() {
   return collectText(

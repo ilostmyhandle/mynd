@@ -3,34 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Cortex</title>
+  <title>mynd</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
 
-  <!-- AUTH SCREEN: shown when user is not logged in -->
+  <!-- AUTH SCREEN -->
   <div id="auth-screen" class="screen">
-    <div class="hero-shell">
-      <div class="brand-mark">C</div>
+    <div class="hero-block">
+      <div class="brand-mark">m</div>
       <div>
-        <div class="logo">Cortex</div>
+        <div class="logo">mynd</div>
         <p class="tagline">Your memory across every AI.</p>
       </div>
     </div>
 
-    <button id="google-btn" class="btn btn-google">
-      Continue with Google
-    </button>
+    <button id="google-btn" class="btn btn-primary">Continue with Google</button>
 
     <div class="divider">or</div>
 
-    <label class="field-label" for="email-input">Email</label>
     <input id="email-input" type="email" autocomplete="email" placeholder="Email address" />
-    <label class="field-label" for="password-input">Password</label>
     <input id="password-input" type="password" autocomplete="current-password" placeholder="Password" />
 
     <div class="button-row">
-      <button id="signup-btn" class="btn btn-primary">Sign Up</button>
+      <button id="signup-btn" class="btn btn-secondary">Sign Up</button>
       <button id="login-btn" class="btn btn-secondary">Log In</button>
     </div>
 
@@ -38,38 +34,24 @@
     <p id="redirect-hint" class="redirect-hint"></p>
   </div>
 
-  <!-- DASHBOARD: shown when user is logged in -->
+  <!-- DASHBOARD -->
   <div id="dashboard-screen" class="screen hidden">
-    <header class="app-header">
-      <div class="hero-shell compact">
-        <div class="brand-mark">C</div>
-        <div>
-          <div class="logo">Cortex</div>
-          <p class="tagline">Memory layer active</p>
-        </div>
-      </div>
-      <div class="status-pill">
-        <span class="status-dot"></span>
-        Listening
-      </div>
-    </header>
 
-    <div class="glass-strip">
-      <span>Claude</span>
-      <span>ChatGPT</span>
-      <span>Gemini</span>
+    <div class="app-header">
+      <div class="wordmark">mynd</div>
+      <div class="header-right">
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          Awake
+        </div>
+        <button id="logout-btn" class="btn btn-ghost">Log Out</button>
+      </div>
     </div>
 
-    <div class="counter-wrap">
-      <div class="counter-head">
-        <div>
-          <div class="counter-label">Memory vault</div>
-          <div class="counter-caption">Stored locally, synced by count</div>
-        </div>
-        <div class="counter-numbers">
-          <span id="counter-used">0</span>
-          <span> / 200</span>
-        </div>
+    <div class="panel">
+      <div class="panel-row">
+        <span class="panel-title">Memory vault</span>
+        <span class="counter-numbers"><span id="counter-used">0</span> / <span id="counter-limit">200</span></span>
       </div>
       <div class="counter-track">
         <div id="counter-bar" class="counter-bar"></div>
@@ -77,76 +59,61 @@
     </div>
 
     <div id="limit-warning" class="warning hidden">
-      <div>You have reached your free limit.</div>
+      <span id="upgrade-message">Free plan</span>
       <button id="upgrade-btn" class="btn btn-upgrade">Upgrade $5/mo</button>
     </div>
 
-    <div class="memory-panel">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title">Recent context</div>
-          <div class="panel-subtitle">Select memories to inject manually</div>
-        </div>
-      </div>
+    <div class="panel">
+      <div class="panel-title">Recent memories</div>
+      <p class="panel-sub">Select memories to inject into your next message</p>
       <div id="memory-list" class="memory-list"></div>
-      <button id="apply-memories-btn" class="btn btn-primary" style="display:none;margin-top:10px;">Inject selected</button>
+      <button id="apply-memories-btn" class="btn btn-primary" style="display:none;margin-top:2px;">Inject selected</button>
       <p id="apply-memories-message" class="message"></p>
     </div>
 
-    <div class="memory-panel tool-panel">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title">Add memory</div>
-          <div class="panel-subtitle">Save a fact, rule, correction, or project note</div>
-        </div>
-      </div>
-      <label class="field-label" for="memory-input">Memory</label>
-      <textarea id="memory-input" rows="3" placeholder="Cortex should remember..."></textarea>
-      <label class="field-label" for="memory-topic-input">Topic</label>
-      <input id="memory-topic-input" type="text" placeholder="project, domain, rule..." />
+    <div class="panel">
+      <div class="panel-title">Add memory</div>
+      <textarea id="memory-input" rows="3" placeholder="mynd should remember..."></textarea>
+      <input id="memory-topic-input" type="text" placeholder="Topic, e.g. project" />
       <button id="save-memory-btn" class="btn btn-primary">Save Memory</button>
       <p id="dashboard-message" class="message"></p>
     </div>
 
-    <div class="memory-panel tool-panel">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title">Extract test</div>
-          <div class="panel-subtitle">Paste a short conversation to test capture</div>
-        </div>
-      </div>
-      <label class="field-label" for="conversation-input">Conversation</label>
+    <div class="panel">
+      <div class="panel-title">Extract test</div>
+      <p class="panel-sub">Paste a conversation to test memory capture</p>
       <textarea id="conversation-input" rows="4" placeholder="Paste a short conversation..."></textarea>
       <button id="extract-memory-btn" class="btn btn-secondary">Extract Memories</button>
       <p id="summarizer-message" class="message"></p>
     </div>
 
-    <div class="memory-panel settings-panel">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title">Model route</div>
-          <div class="panel-subtitle">Default uses your secure Edge Function</div>
-        </div>
+    <div class="panel">
+      <div class="panel-row">
+        <span class="panel-title">AI route</span>
+        <span class="route-pill">Default</span>
       </div>
-      <label class="field-label" for="provider-select">Provider</label>
-      <select id="provider-select">
-        <option value="default">Default</option>
-        <option value="openai">OpenAI (own key)</option>
-        <option value="anthropic">Anthropic (own key)</option>
-        <option value="gemini">Gemini (own key)</option>
-        <option value="chrome-ai">Experimental: Prompt AI</option>
-      </select>
-      <label class="field-label" for="model-input">Model</label>
-      <input id="model-input" type="text" placeholder="Model" />
-      <div id="api-key-wrap">
-        <label class="field-label" for="api-key-input">API key</label>
-        <input id="api-key-input" type="password" autocomplete="off" placeholder="API key" />
+      <p class="panel-sub">Recommended: mynd handles extraction securely through the hosted Edge Function.</p>
+      <button id="advanced-settings-toggle" class="btn btn-secondary" type="button">Advanced key settings</button>
+      <div id="advanced-settings" class="advanced-settings hidden">
+        <select id="provider-select">
+          <option value="default">Default - mynd secure route</option>
+          <option value="openai">OpenAI (own key)</option>
+          <option value="anthropic">Anthropic (own key)</option>
+          <option value="gemini">Gemini (own key)</option>
+          <option value="chrome-ai">Experimental: Prompt AI</option>
+        </select>
+        <input id="model-input" type="text" placeholder="Model" />
+        <div id="api-key-wrap">
+          <input id="api-key-input" type="password" autocomplete="off" placeholder="Paste API key to save or replace" />
+          <p id="api-key-status" class="field-note"></p>
+          <button id="clear-api-key-btn" class="btn btn-ghost clear-key-btn" type="button">Clear saved key</button>
+        </div>
+        <p class="field-note">Own keys stay on this device and are used directly from the extension.</p>
       </div>
       <button id="save-settings-btn" class="btn btn-secondary">Save Settings</button>
       <p id="settings-message" class="message"></p>
     </div>
 
-    <button id="logout-btn" class="btn btn-ghost">Log Out</button>
   </div>
 
   <script src="popup.js"></script>

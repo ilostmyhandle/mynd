@@ -7,7 +7,7 @@ import {
   querySelector
 } from './shared.js';
 
-console.log('Cortex: Claude script loaded.');
+console.log('mynd: Claude script loaded.');
 
 function getConversationText() {
   const specific = [

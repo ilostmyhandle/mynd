@@ -1,5 +1,5 @@
 /**
- * Cortex Storage Layer
+ * mynd Storage Layer
  * Handles all reading and writing to the brain's memory.
  * This is the only file that touches stored memories directly.
  */
@@ -14,7 +14,8 @@ const DEFAULT_ENTITLEMENTS = {
   isPaid: false,
   memoryCount: 0
 };
-const ENTITLEMENTS_CACHE_KEY = 'cortex.entitlements';
+const ENTITLEMENTS_CACHE_KEY = 'mynd.entitlements';
+const LEGACY_ENTITLEMENTS_CACHE_KEY = 'cortex.entitlements';
 
 const StorageManager = {
 
@@ -146,7 +147,7 @@ const StorageManager = {
 
       return { success: true, count: data };
     } catch (error) {
-      console.warn("Cortex: Server memory counter sync failed.", error);
+      console.warn("mynd: Server memory counter sync failed.", error);
 
       return {
         success: false,
@@ -170,17 +171,18 @@ const StorageManager = {
       const entitlements = normalizeEntitlements(row);
 
       await chrome.storage.local.set({ [ENTITLEMENTS_CACHE_KEY]: entitlements });
+      await chrome.storage.local.remove([LEGACY_ENTITLEMENTS_CACHE_KEY]);
       return entitlements;
     } catch (error) {
-      console.warn("Cortex: Entitlement lookup failed.", error);
+      console.warn("mynd: Entitlement lookup failed.", error);
       return StorageManager.getCachedEntitlements();
     }
   },
 
   getCachedEntitlements: async () => {
     return new Promise((resolve) => {
-      chrome.storage.local.get([ENTITLEMENTS_CACHE_KEY], (result) => {
-        resolve(normalizeEntitlements(result[ENTITLEMENTS_CACHE_KEY]));
+      chrome.storage.local.get([ENTITLEMENTS_CACHE_KEY, LEGACY_ENTITLEMENTS_CACHE_KEY], (result) => {
+        resolve(normalizeEntitlements(result[ENTITLEMENTS_CACHE_KEY] || result[LEGACY_ENTITLEMENTS_CACHE_KEY]));
       });
     });
   },
@@ -238,7 +240,7 @@ const StorageManager = {
   clearAll: async () => {
     return new Promise((resolve) => {
       chrome.storage.local.set({ memories: [], total: 0 }, () => {
-        console.log("Cortex: Brain cleared.");
+        console.log("mynd: Brain cleared.");
         resolve({ success: true });
       });
     });
@@ -248,7 +250,7 @@ const StorageManager = {
 function persistMemories(memories, result) {
   return new Promise((resolve) => {
     chrome.storage.local.set({ memories, total: activeCount(memories) }, async () => {
-      console.log("Cortex: Memory saved.");
+      console.log("mynd: Memory saved.");
 
       const sync = result.syncServerCount ?
         await StorageManager.syncServerMemoryCount() :

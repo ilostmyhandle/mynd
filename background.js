@@ -3,7 +3,8 @@ import StorageManager from './memory/storage.js';
 import SettingsManager from './memory/settings.js';
 
 const OAUTH_CALLBACK_PATH = 'auth';
-const OAUTH_RESPONSE_KEY = 'cortex.pendingOAuthResponseUrl';
+const OAUTH_RESPONSE_KEY = 'mynd.pendingOAuthResponseUrl';
+const LEGACY_OAUTH_RESPONSE_KEY = 'cortex.pendingOAuthResponseUrl';
 const DEV_OAUTH_CALLBACK_ORIGIN = 'http://localhost:3000';
 
 // ---------------------------------------------------------------------------
@@ -13,14 +14,14 @@ const DEV_OAUTH_CALLBACK_ORIGIN = 'http://localhost:3000';
 // workers). All other providers use fetch directly.
 // ---------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === 'cortex.extractMemories') {
+  if (message?.type === 'mynd.extractMemories') {
     handleExtraction(message.platform, message.text, message.sessionId)
       .then(sendResponse)
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   }
 
-  if (message?.type === 'cortex.promptAiStatus') {
+  if (message?.type === 'mynd.promptAiStatus') {
     getPromptAiStatus()
       .then(sendResponse)
       .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -41,7 +42,8 @@ async function handleExtraction(platform, text, sessionId = '') {
   const { summary, memories } = result;
 
   if (summary) {
-    await chrome.storage.local.set({ [`cortex.lastSummary.${platform}`]: summary });
+    await chrome.storage.local.set({ [`mynd.lastSummary.${platform}`]: summary });
+    await chrome.storage.local.remove([`cortex.lastSummary.${platform}`]);
   }
 
   let saved = 0;
@@ -67,7 +69,7 @@ async function extractViaOffscreen(text) {
 
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
-      { type: 'cortex.offscreen.extract', text },
+      { type: 'mynd.offscreen.extract', text },
       (response) => {
         if (chrome.runtime.lastError) {
           return reject(new Error(chrome.runtime.lastError.message));
@@ -84,7 +86,7 @@ async function getPromptAiStatus() {
 
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
-      { type: 'cortex.offscreen.status' },
+      { type: 'mynd.offscreen.status' },
       (response) => {
         if (chrome.runtime.lastError) {
           return reject(new Error(chrome.runtime.lastError.message));
@@ -121,9 +123,10 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   if (!isOAuthCallbackUrl(changeInfo.url)) return;
 
   await chrome.storage.local.set({ [OAUTH_RESPONSE_KEY]: changeInfo.url });
+  await chrome.storage.local.remove([LEGACY_OAUTH_RESPONSE_KEY]);
 
   chrome.runtime.sendMessage({
-    type: 'cortex.oauthCallback',
+    type: 'mynd.oauthCallback',
     url: changeInfo.url
   }).catch(() => {});
 
@@ -147,4 +150,4 @@ function isOAuthCallbackUrl(url) {
   }
 }
 
-console.log('Cortex background service running.');
+console.log('mynd background service running.');

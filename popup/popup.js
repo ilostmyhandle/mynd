@@ -8,8 +8,11 @@ const dashboardScreen = document.getElementById('dashboard-screen');
 const authMessage = document.getElementById('auth-message');
 const redirectHint = document.getElementById('redirect-hint');
 const counterUsed = document.getElementById('counter-used');
+const counterLimit = document.getElementById('counter-limit');
 const counterBar = document.getElementById('counter-bar');
 const limitWarning = document.getElementById('limit-warning');
+const upgradeMessage = document.getElementById('upgrade-message');
+const upgradeButton = document.getElementById('upgrade-btn');
 const memoryInput = document.getElementById('memory-input');
 const memoryTopicInput = document.getElementById('memory-topic-input');
 const saveMemoryButton = document.getElementById('save-memory-btn');
@@ -21,6 +24,10 @@ const providerSelect = document.getElementById('provider-select');
 const apiKeyInput = document.getElementById('api-key-input');
 const modelInput = document.getElementById('model-input');
 const apiKeyWrap = document.getElementById('api-key-wrap');
+const apiKeyStatus = document.getElementById('api-key-status');
+const clearApiKeyButton = document.getElementById('clear-api-key-btn');
+const advancedSettingsToggle = document.getElementById('advanced-settings-toggle');
+const advancedSettings = document.getElementById('advanced-settings');
 const saveSettingsButton = document.getElementById('save-settings-btn');
 const settingsMessage = document.getElementById('settings-message');
 const conversationInput = document.getElementById('conversation-input');
@@ -30,7 +37,11 @@ const googleButton = document.getElementById('google-btn');
 const signupButton = document.getElementById('signup-btn');
 const loginButton = document.getElementById('login-btn');
 const logoutButton = document.getElementById('logout-btn');
-const OAUTH_RESPONSE_KEY = 'cortex.pendingOAuthResponseUrl';
+const OAUTH_RESPONSE_KEY = 'mynd.pendingOAuthResponseUrl';
+const LEGACY_OAUTH_RESPONSE_KEY = 'cortex.pendingOAuthResponseUrl';
+let currentSettings = null;
+let advancedSettingsOpen = false;
+let clearSavedApiKey = false;
 
 window.addEventListener('error', (event) => {
   showMessage(`Startup error: ${event.message}`);
@@ -81,11 +92,16 @@ async function refreshDashboard() {
   const stats = await StorageManager.getStats();
 
   counterUsed.textContent = stats.total;
+  counterLimit.textContent = stats.limit;
   counterBar.style.width = `${stats.percentage}%`;
 
-  if (stats.limitReached) {
+  if (!stats.isPaid) {
+    upgradeMessage.textContent = stats.limitReached ?
+      'Free limit reached.' :
+      `Free plan - ${stats.remaining} memories left.`;
     limitWarning.classList.remove('hidden');
   } else {
+    upgradeMessage.textContent = 'Pro active.';
     limitWarning.classList.add('hidden');
   }
 
@@ -114,7 +130,7 @@ googleButton.addEventListener('click', async () => {
     if (!data?.url) throw new Error('Supabase did not return a Google sign-in URL.');
 
     await chrome.tabs.create({ url: data.url, active: true });
-    showMessage('Finish Google sign-in in the new tab, then reopen Cortex.');
+    showMessage('Finish Google sign-in in the new tab, then reopen mynd.');
   } catch (error) {
     showMessage(getErrorMessage(error));
   } finally {
@@ -236,11 +252,21 @@ providerSelect.addEventListener('change', () => {
   const provider = providerSelect.value;
   modelInput.value = SettingsManager.getDefaultModel(provider);
   toggleApiKeyFields(provider);
+  clearSavedApiKey = false;
 });
 
 function toggleApiKeyFields(provider) {
   const needsKey = provider !== 'default' && provider !== 'chrome-ai';
   apiKeyWrap.style.display = needsKey ? '' : 'none';
+  clearApiKeyButton.style.display = needsKey && currentSettings?.provider === provider && currentSettings?.apiKey ? '' : 'none';
+
+  if (needsKey && currentSettings?.provider === provider && currentSettings?.apiKey) {
+    apiKeyStatus.textContent = 'Saved key on this device. Leave blank to keep it, paste a new key to replace it.';
+  } else if (needsKey) {
+    apiKeyStatus.textContent = 'No saved key for this provider.';
+  } else {
+    apiKeyStatus.textContent = '';
+  }
 
   if (provider === 'default') {
     modelInput.value = 'gpt-4o-mini';
@@ -256,6 +282,19 @@ function toggleApiKeyFields(provider) {
   }
 }
 
+advancedSettingsToggle.addEventListener('click', () => {
+  advancedSettingsOpen = !advancedSettingsOpen;
+  advancedSettings.classList.toggle('hidden', !advancedSettingsOpen);
+  advancedSettingsToggle.textContent = advancedSettingsOpen ? 'Hide advanced settings' : 'Advanced key settings';
+});
+
+clearApiKeyButton.addEventListener('click', () => {
+  clearSavedApiKey = true;
+  apiKeyInput.value = '';
+  apiKeyStatus.textContent = 'Saved key will be cleared when you save settings.';
+  clearApiKeyButton.style.display = 'none';
+});
+
 saveSettingsButton.addEventListener('click', async () => {
   saveSettingsButton.disabled = true;
   showSettingsMessage('Saving settings...');
@@ -264,16 +303,41 @@ saveSettingsButton.addEventListener('click', async () => {
     const settings = await SettingsManager.saveSettings({
       provider: providerSelect.value,
       apiKey: apiKeyInput.value,
-      model: modelInput.value
+      model: modelInput.value,
+      clearApiKey: clearSavedApiKey
     });
 
-    apiKeyInput.value = settings.apiKey;
+    currentSettings = settings;
+    clearSavedApiKey = false;
+    apiKeyInput.value = '';
     modelInput.value = settings.model;
+    toggleApiKeyFields(settings.provider);
     showSettingsMessage('Settings saved locally.');
   } catch (error) {
     showSettingsMessage(getErrorMessage(error));
   } finally {
     saveSettingsButton.disabled = false;
+  }
+});
+
+upgradeButton.addEventListener('click', async () => {
+  upgradeButton.disabled = true;
+  upgradeMessage.textContent = 'Opening secure checkout...';
+
+  try {
+    const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+      body: {}
+    });
+
+    if (error) throw error;
+    if (!data?.url) throw new Error('Checkout did not return a URL.');
+
+    await chrome.tabs.create({ url: data.url, active: true });
+    upgradeMessage.textContent = 'Complete checkout in the new tab.';
+  } catch (error) {
+    upgradeMessage.textContent = getErrorMessage(error);
+  } finally {
+    upgradeButton.disabled = false;
   }
 });
 
@@ -389,7 +453,7 @@ function getOAuthRedirectUrl() {
 }
 
 function extractMemoriesInBackground(platform, text) {
-  return sendRuntimeMessage({ type: 'cortex.extractMemories', platform, text });
+  return sendRuntimeMessage({ type: 'mynd.extractMemories', platform, text });
 }
 
 function sendRuntimeMessage(message) {
@@ -451,8 +515,8 @@ async function completeOAuth(responseUrl) {
 }
 
 async function completePendingOAuth() {
-  const result = await chrome.storage.local.get([OAUTH_RESPONSE_KEY]);
-  const responseUrl = result[OAUTH_RESPONSE_KEY];
+  const result = await chrome.storage.local.get([OAUTH_RESPONSE_KEY, LEGACY_OAUTH_RESPONSE_KEY]);
+  const responseUrl = result[OAUTH_RESPONSE_KEY] || result[LEGACY_OAUTH_RESPONSE_KEY];
 
   if (!responseUrl) return;
 
@@ -461,7 +525,7 @@ async function completePendingOAuth() {
 }
 
 async function clearPendingOAuth() {
-  await chrome.storage.local.remove([OAUTH_RESPONSE_KEY]);
+  await chrome.storage.local.remove([OAUTH_RESPONSE_KEY, LEGACY_OAUTH_RESPONSE_KEY]);
 }
 
 async function renderMemoryList() {
@@ -478,7 +542,7 @@ async function renderMemoryList() {
 
   memoryList.innerHTML = latest.map((memory, i) => `
     <label class="memory-item memory-item-selectable">
-      <input type="checkbox" class="memory-checkbox" data-index="${i}" style="flex-shrink:0;accent-color:#7c6af7;cursor:pointer;" />
+      <input type="checkbox" class="memory-checkbox" data-index="${i}" />
       <div style="flex:1;min-width:0;">
         <div class="memory-fact">${escapeHtml(memory.fact)}</div>
         <div class="memory-meta">${escapeHtml(memory.kind || memory.entity || memory.category || memory.topic)} &middot; ${escapeHtml(memory.entity || memory.category || memory.topic)} &middot; ${escapeHtml(memory.platform)} &middot; ${memory.uses} use${memory.uses === 1 ? '' : 's'}</div>
@@ -513,7 +577,7 @@ applyMemoriesBtn.addEventListener('click', async () => {
     }
 
     await chrome.tabs.sendMessage(tab.id, {
-      type: 'cortex.queueInjection',
+      type: 'mynd.queueInjection',
       memories: selected
     });
 
@@ -549,9 +613,11 @@ async function markMemoriesRetrieved(selectedMemories) {
 
 async function renderSettings() {
   const settings = await SettingsManager.getSettings();
+  currentSettings = settings;
+  clearSavedApiKey = false;
 
   providerSelect.value = settings.provider;
-  apiKeyInput.value = settings.apiKey;
+  apiKeyInput.value = '';
   modelInput.value = settings.model;
   toggleApiKeyFields(settings.provider);
 }
@@ -566,7 +632,7 @@ function escapeHtml(value) {
 }
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type !== 'cortex.oauthCallback') return;
+  if (message?.type !== 'mynd.oauthCallback') return;
 
   completeOAuth(message.url).catch((error) => {
     showMessage(getErrorMessage(error));

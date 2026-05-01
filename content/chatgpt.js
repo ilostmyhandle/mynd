@@ -8,7 +8,7 @@ import {
   querySelector
 } from './shared.js';
 
-console.log('Cortex: ChatGPT script loaded.');
+console.log('mynd: ChatGPT script loaded.');
 
 function getConversationText() {
   return collectText(

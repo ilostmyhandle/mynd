@@ -1,0 +1,11 @@
+[functions.create-checkout-session]
+verify_jwt = true
+
+[functions.extract-memories]
+verify_jwt = true
+
+[functions.lemon-webhook]
+verify_jwt = false
+
+[functions.billing-return]
+verify_jwt = false

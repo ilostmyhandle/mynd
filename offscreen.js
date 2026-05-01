@@ -18,7 +18,7 @@ Action must be add, update, or delete. Only use update/delete when the user expl
 Target is the old fact or entity being replaced/retired, or "" for add.`;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === 'cortex.offscreen.status') {
+  if (message?.type === 'mynd.offscreen.status') {
     getChromeAIStatus()
       .then(sendResponse)
       .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -26,7 +26,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type !== 'cortex.offscreen.extract') return false;
+  if (message?.type !== 'mynd.offscreen.extract') return false;
 
   extractWithChromeAI(message.text)
     .then((result) => sendResponse({ success: true, ...result }))
