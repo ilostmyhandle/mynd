@@ -97,18 +97,10 @@
       <div id="advanced-settings" class="advanced-settings hidden">
         <select id="provider-select">
           <option value="default">Default - mynd secure route</option>
-          <option value="openai">OpenAI (own key)</option>
-          <option value="anthropic">Anthropic (own key)</option>
-          <option value="gemini">Gemini (own key)</option>
           <option value="chrome-ai">Experimental: Prompt AI</option>
         </select>
         <input id="model-input" type="text" placeholder="Model" />
-        <div id="api-key-wrap">
-          <input id="api-key-input" type="password" autocomplete="off" placeholder="Paste API key to save or replace" />
-          <p id="api-key-status" class="field-note"></p>
-          <button id="clear-api-key-btn" class="btn btn-ghost clear-key-btn" type="button">Clear saved key</button>
-        </div>
-        <p class="field-note">Own keys stay on this device and are used directly from the extension.</p>
+        <p class="field-note">BYO API keys are disabled in this build. Hosted extraction keeps provider keys off-device.</p>
       </div>
       <button id="save-settings-btn" class="btn btn-secondary">Save Settings</button>
       <p id="settings-message" class="message"></p>

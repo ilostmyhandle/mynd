@@ -1,19 +1,22 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.1';
 
-const corsHeaders = {
-  'access-control-allow-origin': '*',
+const baseCorsHeaders = {
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
   'access-control-allow-methods': 'POST, OPTIONS'
 };
 
 Deno.serve(async (request) => {
+  const corsHeaders = getCorsHeaders(request);
+  if (!corsHeaders) return json({ error: 'Origin not allowed.' }, 403);
+  const respond = (body: unknown, status = 200) => json(body, status, corsHeaders);
+
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
     if (request.method !== 'POST') {
-      return json({ error: 'Method not allowed.' }, 405);
+      return respond({ error: 'Method not allowed.' }, 405);
     }
 
     const lemonKey = Deno.env.get('LEMON_SQUEEZY_API_KEY');
@@ -21,18 +24,18 @@ Deno.serve(async (request) => {
     const variantId = Deno.env.get('LEMON_SQUEEZY_VARIANT_ID');
 
     if (!lemonKey || !storeId || !variantId) {
-      return json({ error: 'Lemon Squeezy is not configured.' }, 500);
+      return respond({ error: 'Lemon Squeezy is not configured.' }, 500);
     }
 
     const token = getBearerToken(request);
-    if (!token) return json({ error: 'Authentication required.' }, 401);
+    if (!token) return respond({ error: 'Authentication required.' }, 401);
 
     const supabase = getSupabaseAdmin();
     const { data: userResult, error: userError } = await supabase.auth.getUser(token);
     const user = userResult?.user;
 
     if (userError || !user?.id) {
-      return json({ error: 'Authentication required.' }, 401);
+      return respond({ error: 'Authentication required.' }, 401);
     }
 
     const { error: upsertError } = await supabase
@@ -50,7 +53,7 @@ Deno.serve(async (request) => {
     if (profileError) throw profileError;
 
     if (profile?.plan === 'pro') {
-      return json({ error: 'You are already on mynd Pro.' }, 400);
+      return respond({ error: 'You are already on mynd Pro.' }, 400);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -69,12 +72,12 @@ Deno.serve(async (request) => {
     const checkoutUrl = checkout?.data?.attributes?.url;
 
     if (!checkoutUrl) {
-      return json({ error: 'Lemon Squeezy did not return a checkout URL.' }, 502);
+      return respond({ error: 'Lemon Squeezy did not return a checkout URL.' }, 502);
     }
 
-    return json({ url: checkoutUrl });
+    return respond({ url: checkoutUrl });
   } catch (error) {
-    return json({ error: getErrorMessage(error) }, 500);
+    return respond({ error: getErrorMessage(error) }, 500);
   }
 });
 
@@ -172,11 +175,35 @@ function getSupabaseAdmin() {
   });
 }
 
-function json(body: unknown, status = 200) {
+function getCorsHeaders(request: Request) {
+  const origin = request.headers.get('origin') || '';
+  if (!origin) {
+    return {
+      ...baseCorsHeaders,
+      'access-control-allow-origin': 'null'
+    };
+  }
+
+  const configuredOrigins = (Deno.env.get('ALLOWED_EXTENSION_ORIGINS') || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const allowed = origin.startsWith('chrome-extension://') || configuredOrigins.includes(origin);
+  if (!allowed) return null;
+
+  return {
+    ...baseCorsHeaders,
+    'access-control-allow-origin': origin,
+    vary: 'origin'
+  };
+}
+
+function json(body: unknown, status = 200, headers = baseCorsHeaders) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...headers,
       'content-type': 'application/json'
     }
   });

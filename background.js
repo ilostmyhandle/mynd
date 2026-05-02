@@ -5,7 +5,6 @@ import SettingsManager from './memory/settings.js';
 const OAUTH_CALLBACK_PATH = 'auth';
 const OAUTH_RESPONSE_KEY = 'mynd.pendingOAuthResponseUrl';
 const LEGACY_OAUTH_RESPONSE_KEY = 'cortex.pendingOAuthResponseUrl';
-const DEV_OAUTH_CALLBACK_ORIGIN = 'http://localhost:3000';
 
 // ---------------------------------------------------------------------------
 // MEMORY EXTRACTION
@@ -14,20 +13,26 @@ const DEV_OAUTH_CALLBACK_ORIGIN = 'http://localhost:3000';
 // workers). All other providers use fetch directly.
 // ---------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!isTrustedSender(sender)) return false;
+
   if (message?.type === 'mynd.extractMemories') {
     handleExtraction(message.platform, message.text, message.sessionId)
       .then(sendResponse)
-      .catch((err) => sendResponse({ success: false, error: err.message }));
+      .catch((err) => sendResponse({ success: false, error: safeErrorMessage(err) }));
     return true;
   }
 
   if (message?.type === 'mynd.promptAiStatus') {
     getPromptAiStatus()
       .then(sendResponse)
-      .catch((err) => sendResponse({ success: false, error: err.message }));
+      .catch((err) => sendResponse({ success: false, error: safeErrorMessage(err) }));
     return true;
   }
 });
+
+function isTrustedSender(sender) {
+  return sender?.id === chrome.runtime.id;
+}
 
 async function handleExtraction(platform, text, sessionId = '') {
   const settings = await SettingsManager.getSettings();
@@ -136,18 +141,15 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
 function isOAuthCallbackUrl(url) {
   const extensionRedirectUrl = chrome.identity.getRedirectURL(OAUTH_CALLBACK_PATH);
   if (url.startsWith(extensionRedirectUrl)) return true;
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.origin === DEV_OAUTH_CALLBACK_ORIGIN &&
-      (parsed.searchParams.has('code') ||
-        parsed.searchParams.has('error') ||
-        parsed.hash.includes('access_token') ||
-        parsed.hash.includes('error'))
-    );
-  } catch {
-    return false;
-  }
+  return false;
+}
+
+function safeErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error || 'Unknown error.');
+  return message
+    .replace(/sk-[A-Za-z0-9_-]+/g, '[redacted]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .slice(0, 240);
 }
 
 console.log('mynd background service running.');

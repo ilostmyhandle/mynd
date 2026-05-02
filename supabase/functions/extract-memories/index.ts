@@ -1,7 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.1';
 
-const corsHeaders = {
-  'access-control-allow-origin': '*',
+const baseCorsHeaders = {
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
   'access-control-allow-methods': 'POST, OPTIONS'
 };
@@ -68,41 +67,45 @@ const MEMORY_SCHEMA = {
 };
 
 Deno.serve(async (request) => {
+  const corsHeaders = getCorsHeaders(request);
+  if (!corsHeaders) return json({ error: 'Origin not allowed.' }, 403);
+  const respond = (body: unknown, status = 200) => json(body, status, corsHeaders);
+
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
     if (request.method !== 'POST') {
-      return json({ error: 'Method not allowed.' }, 405);
+      return respond({ error: 'Method not allowed.' }, 405);
     }
 
     const openaiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiKey) {
-      return json({ error: 'Extraction service is not configured.' }, 500);
+      return respond({ error: 'Extraction service is not configured.' }, 500);
     }
 
     const token = getBearerToken(request);
-    if (!token) return json({ error: 'Authentication required.' }, 401);
+    if (!token) return respond({ error: 'Authentication required.' }, 401);
 
     const supabase = getSupabaseAdmin();
     const { data: userResult, error: userError } = await supabase.auth.getUser(token);
     const user = userResult?.user;
 
     if (userError || !user?.id) {
-      return json({ error: 'Authentication required.' }, 401);
+      return respond({ error: 'Authentication required.' }, 401);
     }
 
     const body = await request.json().catch(() => ({}));
     const text = String(body.text || '').trim();
 
     if (!text) {
-      return json({ error: 'No conversation text provided.' }, 400);
+      return respond({ error: 'No conversation text provided.' }, 400);
     }
 
     const usage = await consumeDailyExtraction(supabase, user.id);
     if (!usage.allowed) {
-      return json(
+      return respond(
         {
           error: `Daily extraction limit reached. Free accounts get ${usage.dailyLimit} extractions per day.`,
           used: usage.used,
@@ -114,7 +117,7 @@ Deno.serve(async (request) => {
     }
 
     const limitedText = text.slice(-12000);
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         authorization: `Bearer ${openaiKey}`,
@@ -122,42 +125,45 @@ Deno.serve(async (request) => {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        instructions: SYSTEM_PROMPT,
-        input: [
+        messages: [
+          {
+            role: 'system',
+            content: SYSTEM_PROMPT
+          },
           {
             role: 'user',
-            content: [{ type: 'input_text', text: `Conversation:\n\n${limitedText}` }]
+            content: `Conversation:\n\n${limitedText}`
           }
         ],
-        text: {
-          format: {
-            type: 'json_schema',
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
             name: 'mynd_extraction',
             strict: true,
             schema: MEMORY_SCHEMA
           }
         },
-        max_output_tokens: 800
+        max_tokens: 800
       })
     });
 
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
-      return json(
+      return respond(
         { error: payload?.error?.message || `${response.status} ${response.statusText}` },
         response.status
       );
     }
 
-    const outputText = payload?.output_text || extractOutputText(payload);
+    const outputText = payload?.choices?.[0]?.message?.content || extractOutputText(payload);
     if (!outputText) {
-      return json({ error: 'OpenAI returned no extractable text.' }, 502);
+      return respond({ error: 'OpenAI returned no extractable text.' }, 502);
     }
 
-    return json(normalizeResult(JSON.parse(outputText)));
+    return respond(normalizeResult(JSON.parse(outputText)));
   } catch (error) {
-    return json({ error: getErrorMessage(error) }, 500);
+    return respond({ error: getErrorMessage(error) }, 500);
   }
 });
 
@@ -250,11 +256,35 @@ function normalizeKind(kind: unknown) {
   return ['personal', 'project', 'domain', 'correction', 'rule'].includes(value) ? value : 'personal';
 }
 
-function json(body: unknown, status = 200) {
+function getCorsHeaders(request: Request) {
+  const origin = request.headers.get('origin') || '';
+  if (!origin) {
+    return {
+      ...baseCorsHeaders,
+      'access-control-allow-origin': 'null'
+    };
+  }
+
+  const configuredOrigins = (Deno.env.get('ALLOWED_EXTENSION_ORIGINS') || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const allowed = origin.startsWith('chrome-extension://') || configuredOrigins.includes(origin);
+  if (!allowed) return null;
+
+  return {
+    ...baseCorsHeaders,
+    'access-control-allow-origin': origin,
+    vary: 'origin'
+  };
+}
+
+function json(body: unknown, status = 200, headers = baseCorsHeaders) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...headers,
       'content-type': 'application/json'
     }
   });

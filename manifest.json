@@ -16,11 +16,7 @@
     "https://chat.openai.com/*",
     "https://claude.ai/*",
     "https://gemini.google.com/*",
-    "https://*.supabase.co/*",
-    "https://api.openai.com/*",
-    "https://api.anthropic.com/*",
-    "https://generativelanguage.googleapis.com/*",
-    "http://localhost:3000/*"
+    "https://*.supabase.co/*"
   ],
   "background": {
     "service_worker": "background.js"

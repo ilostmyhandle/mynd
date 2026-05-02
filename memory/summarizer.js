@@ -65,44 +65,6 @@ const MEMORY_SCHEMA = {
   required: ['summary', 'memories']
 };
 
-// Gemini rejects additionalProperties; use a stripped schema.
-const GEMINI_SCHEMA = {
-  type: 'object',
-  properties: {
-    summary: { type: 'string' },
-    memories: {
-      type: 'array',
-      maxItems: 6,
-      items: {
-        type: 'object',
-        properties: {
-          fact: { type: 'string' },
-          topic: {
-            type: 'string',
-            enum: ['project', 'preference', 'workflow', 'person', 'general']
-          },
-          entity: { type: 'string' },
-          category: {
-            type: 'string',
-            enum: ['project', 'tool', 'preference', 'workflow', 'constraint', 'person', 'general']
-          },
-          kind: {
-            type: 'string',
-            enum: ['personal', 'project', 'domain', 'correction', 'rule']
-          },
-          action: {
-            type: 'string',
-            enum: ['add', 'update', 'delete']
-          },
-          target: { type: 'string' }
-        },
-        required: ['fact', 'topic', 'entity', 'category', 'kind', 'action', 'target']
-      }
-    }
-  },
-  required: ['summary', 'memories']
-};
-
 // Returns { summary: string, memories: Array<{fact, topic}> }
 const Summarizer = {
   extractMemories: async (conversationText) => {
@@ -119,11 +81,7 @@ const Summarizer = {
       return extractWithChromeAI(text);
     }
 
-    if (!settings.apiKey) throw new Error('Add your API key in settings first.');
-
-    if (settings.provider === 'gemini') return extractWithGemini(text, settings);
-    if (settings.provider === 'anthropic') return extractWithAnthropic(text, settings);
-    return extractWithOpenAI(text, settings);
+    return extractWithDefaultService(text);
   }
 };
 
@@ -194,121 +152,6 @@ async function createChromeAISession(model) {
     });
   }
   return model.create({ systemPrompt: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}` });
-}
-
-// ---------------------------------------------------------------------------
-// GEMINI API
-// ---------------------------------------------------------------------------
-async function extractWithGemini(conversationText, settings) {
-  const model = settings.model || SettingsManager.getDefaultModel('gemini');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${settings.apiKey}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}` }]
-      },
-      contents: [{ role: 'user', parts: [{ text: `Conversation:\n\n${conversationText}` }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: GEMINI_SCHEMA,
-        maxOutputTokens: 800
-      }
-    })
-  });
-
-  const payload = await parseJsonResponse(response);
-  const outputText = payload.candidates?.[0]?.content?.parts?.map((p) => p.text).join('\n').trim();
-  if (!outputText) throw new Error('Gemini returned no extractable text.');
-
-  return normalizeResult(JSON.parse(extractJsonObject(outputText)));
-}
-
-// ---------------------------------------------------------------------------
-// OPENAI
-// ---------------------------------------------------------------------------
-async function extractWithOpenAI(conversationText, settings) {
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'authorization': `Bearer ${settings.apiKey}`,
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: settings.model || SettingsManager.getDefaultModel('openai'),
-      instructions: SYSTEM_PROMPT,
-      input: [
-        {
-          role: 'user',
-          content: [{ type: 'input_text', text: `Conversation:\n\n${conversationText}` }]
-        }
-      ],
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'mynd_extraction',
-          strict: true,
-          schema: MEMORY_SCHEMA
-        }
-      }
-    })
-  });
-
-  const payload = await parseJsonResponse(response);
-  const outputText = payload.output_text || extractOpenAIOutputText(payload);
-  if (!outputText) throw new Error('OpenAI returned no extractable text.');
-
-  return normalizeResult(JSON.parse(outputText));
-}
-
-// ---------------------------------------------------------------------------
-// ANTHROPIC
-// ---------------------------------------------------------------------------
-async function extractWithAnthropic(conversationText, settings) {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': settings.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: settings.model || SettingsManager.getDefaultModel('anthropic'),
-      max_tokens: 800,
-      system: `${SYSTEM_PROMPT}\n\n${JSON_INSTRUCTION}`,
-      messages: [{ role: 'user', content: `Conversation:\n\n${conversationText}` }]
-    })
-  });
-
-  const payload = await parseJsonResponse(response);
-  const outputText = payload.content?.filter((i) => i.type === 'text').map((i) => i.text).join('\n').trim();
-  if (!outputText) throw new Error('Anthropic returned no extractable text.');
-
-  return normalizeResult(JSON.parse(extractJsonObject(outputText)));
-}
-
-// ---------------------------------------------------------------------------
-// HELPERS
-// ---------------------------------------------------------------------------
-async function parseJsonResponse(response) {
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message = payload?.error?.message || payload?.error?.status || `${response.status} ${response.statusText}`;
-    throw new Error(message);
-  }
-  return payload;
-}
-
-function extractOpenAIOutputText(payload) {
-  return payload.output
-    ?.flatMap((item) => item.content || [])
-    .filter((item) => item.type === 'output_text' || item.type === 'text')
-    .map((item) => item.text)
-    .join('\n')
-    .trim();
 }
 
 function extractJsonObject(text) {

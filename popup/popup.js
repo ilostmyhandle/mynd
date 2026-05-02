@@ -21,11 +21,7 @@ const memoryList = document.getElementById('memory-list');
 const applyMemoriesBtn = document.getElementById('apply-memories-btn');
 const applyMemoriesMessage = document.getElementById('apply-memories-message');
 const providerSelect = document.getElementById('provider-select');
-const apiKeyInput = document.getElementById('api-key-input');
 const modelInput = document.getElementById('model-input');
-const apiKeyWrap = document.getElementById('api-key-wrap');
-const apiKeyStatus = document.getElementById('api-key-status');
-const clearApiKeyButton = document.getElementById('clear-api-key-btn');
 const advancedSettingsToggle = document.getElementById('advanced-settings-toggle');
 const advancedSettings = document.getElementById('advanced-settings');
 const saveSettingsButton = document.getElementById('save-settings-btn');
@@ -41,7 +37,6 @@ const OAUTH_RESPONSE_KEY = 'mynd.pendingOAuthResponseUrl';
 const LEGACY_OAUTH_RESPONSE_KEY = 'cortex.pendingOAuthResponseUrl';
 let currentSettings = null;
 let advancedSettingsOpen = false;
-let clearSavedApiKey = false;
 
 window.addEventListener('error', (event) => {
   showMessage(`Startup error: ${event.message}`);
@@ -77,7 +72,7 @@ function showAuth() {
   dashboardScreen.classList.add('hidden');
 
   const redirectUrl = getOAuthRedirectUrl();
-  redirectHint.textContent = `OAuth redirect URL: ${redirectUrl}. Dev fallback accepted: http://localhost:3000`;
+  redirectHint.textContent = `OAuth redirect URL: ${redirectUrl}`;
 }
 
 async function showDashboard(user) {
@@ -252,22 +247,9 @@ providerSelect.addEventListener('change', () => {
   const provider = providerSelect.value;
   modelInput.value = SettingsManager.getDefaultModel(provider);
   toggleApiKeyFields(provider);
-  clearSavedApiKey = false;
 });
 
 function toggleApiKeyFields(provider) {
-  const needsKey = provider !== 'default' && provider !== 'chrome-ai';
-  apiKeyWrap.style.display = needsKey ? '' : 'none';
-  clearApiKeyButton.style.display = needsKey && currentSettings?.provider === provider && currentSettings?.apiKey ? '' : 'none';
-
-  if (needsKey && currentSettings?.provider === provider && currentSettings?.apiKey) {
-    apiKeyStatus.textContent = 'Saved key on this device. Leave blank to keep it, paste a new key to replace it.';
-  } else if (needsKey) {
-    apiKeyStatus.textContent = 'No saved key for this provider.';
-  } else {
-    apiKeyStatus.textContent = '';
-  }
-
   if (provider === 'default') {
     modelInput.value = 'gpt-4o-mini';
     modelInput.readOnly = true;
@@ -288,13 +270,6 @@ advancedSettingsToggle.addEventListener('click', () => {
   advancedSettingsToggle.textContent = advancedSettingsOpen ? 'Hide advanced settings' : 'Advanced key settings';
 });
 
-clearApiKeyButton.addEventListener('click', () => {
-  clearSavedApiKey = true;
-  apiKeyInput.value = '';
-  apiKeyStatus.textContent = 'Saved key will be cleared when you save settings.';
-  clearApiKeyButton.style.display = 'none';
-});
-
 saveSettingsButton.addEventListener('click', async () => {
   saveSettingsButton.disabled = true;
   showSettingsMessage('Saving settings...');
@@ -302,14 +277,10 @@ saveSettingsButton.addEventListener('click', async () => {
   try {
     const settings = await SettingsManager.saveSettings({
       provider: providerSelect.value,
-      apiKey: apiKeyInput.value,
-      model: modelInput.value,
-      clearApiKey: clearSavedApiKey
+      model: modelInput.value
     });
 
     currentSettings = settings;
-    clearSavedApiKey = false;
-    apiKeyInput.value = '';
     modelInput.value = settings.model;
     toggleApiKeyFields(settings.provider);
     showSettingsMessage('Settings saved locally.');
@@ -614,10 +585,8 @@ async function markMemoriesRetrieved(selectedMemories) {
 async function renderSettings() {
   const settings = await SettingsManager.getSettings();
   currentSettings = settings;
-  clearSavedApiKey = false;
 
   providerSelect.value = settings.provider;
-  apiKeyInput.value = '';
   modelInput.value = settings.model;
   toggleApiKeyFields(settings.provider);
 }
@@ -649,9 +618,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 function getErrorMessage(error) {
   if (!error) return 'Something went wrong.';
-  if (typeof error === 'string') return error;
-  if (error.message) return error.message;
-  return JSON.stringify(error);
+  const message = typeof error === 'string' ? error : error.message || 'Something went wrong.';
+  return message
+    .replace(/sk-[A-Za-z0-9_-]+/g, '[redacted]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/key=[A-Za-z0-9_-]+/gi, 'key=[redacted]')
+    .slice(0, 240);
 }
 
 // ---------------------------------------------------------------------------
